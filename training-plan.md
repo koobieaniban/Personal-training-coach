@@ -2,7 +2,9 @@
 > **Live targets** are in `weekly-targets.md` — regenerated each week from your Garmin data.
 > Run `python3 analyze_garmin.py` after uploading a fresh Garmin CSV export to update paces.
 **Race date: Saturday 5 July 2026**
-**Athlete: Post-op meniscus, fully cleared | Current 5k: 28:30 | Target run pace: 5:30/km**
+**Athlete: Post-op meniscus (fully cleared) · De Quervain's tenosynovitis right wrist | Target run pace: 5:30/km**
+
+> **Right wrist protocol:** De Quervain's affects the APL/EPB tendons at the thumb-side of the wrist. Avoid loaded grip, pinch grip, and wrist radial deviation under load. Use **lifting straps** on the right hand for all pulling/carrying. Wrist straps and guards are permitted on Hyrox race day — tape before the race. See modifications per station below.
 
 ---
 
@@ -596,3 +598,20 @@ Sport-specific loading this week — single-leg box squat and Spanish squat are 
 | Wall Balls 100 reps | 6:00 | 5:00–5:30 | <5:00 |
 
 **Projected finish time:** ~85–95 min (conservative), 75–85 min (target)
+
+---
+
+## De Quervain's Right Wrist — Station-by-Station Modifications
+
+| Station | Risk | Modification |
+|---|---|---|
+| SkiErg 1000m | Moderate | Loop straps around wrists, no thumb wrap. Open-palm hook grip only. |
+| Sled Push 50m | Low | Push through heel of palm, wrist locked neutral. Should be comfortable. |
+| Sled Pull 50m | Moderate | Lasso rope around right forearm or use a wrist loop. Left hand does more work. |
+| Burpee Broad Jumps 80m | Moderate | Push-up handles if available; otherwise fist position (right hand) to keep wrist neutral. |
+| Row 1000m | Low–Mod | Rowing strap on right hand. Hook grip, wrist flat at finish — don't let it curl. |
+| Farmers Carry 200m | **High** | Lifting strap on right hand — load transfers to forearm not thumb tendons. Non-negotiable. |
+| Sandbag Lunges 100m | Low | Cross-arm front-rack: forearms crossed, bag on forearms/chest, hands not gripping. |
+| Wall Balls 100 reps | **High** | Catch with forearms/palms, not fingers. KT tape or wrist guard. Practise the catch in training. |
+
+**Between sessions:** Ice right wrist 10–15 min after every grip-heavy session. Wear a splint overnight. Wrist straps and rigid sports tape are permitted in Hyrox Open — tape before the race and inform officials at check-in.
