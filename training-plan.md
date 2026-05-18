@@ -43,9 +43,10 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 
 ### Monday — Run A (Reintroduction)
 
-**Warm-up (10 min)**
+**Warm-up (15 min)**
 - 5 min brisk walk
-- Dynamic drills: leg swings (front/back, lateral) × 10 each, hip circles × 10, A-skips × 2×20m, butt kicks × 2×20m
+- **Knee activation** ← see `knee-rehab-protocol.md` Pre-Run Activation (5 min): clamshells → TKEs → glute bridge → single-leg balance → lateral band walk
+- Dynamic drills: leg swings × 10 each, hip circles × 10, A-skips × 2×20m, butt kicks × 2×20m
 
 **Main (30 min)**
 - 3km easy run @ **6:15–6:30/km** — you ran 5:55/km on May 16 as your first post-surgery run; this is intentionally 30s slower to keep HR in Z2.
@@ -55,11 +56,11 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 
 > **Note:** Week 1 has no dedicated interval session. Monday is pure aerobic reintroduction. Intervals begin Week 2.
 
-**Cool-down (5 min)**
+**Cool-down (8 min)**
 - Walk 3 min
-- Stretches: standing quad, pigeon pose 60s/side, calf raises × 15
+- **Post-session recovery** ← see `knee-rehab-protocol.md`: quad stretch → hamstring → hip flexor → IT band foam roll → calf stretch
 
-**Session total: ~4km, 45 min**
+**Session total: ~4km, 50 min**
 
 ---
 
@@ -68,7 +69,20 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 **Warm-up (8 min)**
 - 400m SkiErg easy (learn the hinge-and-pull pattern — arms drive the machine, not your shoulders)
 
-**Block A — Knee Stability (3 rounds, 60s rest)**
+**Knee Block — Phase 1 (12 min) ← do this FIRST, before any main lifts**
+*Full detail in `knee-rehab-protocol.md` → Phase 1*
+
+3 rounds, 45s rest:
+| Exercise | Reps | Key cue |
+|---|---|---|
+| TKE (band) | 20 each leg | Full lockout, 1s pause |
+| Short Arc Quad | 15 each leg | 30° to full extension, 2s hold |
+| Straight Leg Raise | 15 each leg | Slow 3s lower |
+| Clamshell (band) | 20 each side | Hip stacked, no rocking |
+| Single-leg Balance | 45s each leg | Soft knee, eyes open |
+| Heel Slide | 15 each leg | Slide to comfortable end range — no forcing |
+
+**Block A — Posterior Chain (3 rounds, 60s rest)**
 | Exercise | Sets × Reps | Load |
 |---|---|---|
 | Goblet Squat | 3×12 | 12–16kg KB |
@@ -93,8 +107,10 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 
 ### Friday — Run B (Easy Aerobic)
 
-**Warm-up (8 min)**
-- 5 min walk + same dynamic drills as Monday
+**Warm-up (13 min)**
+- 5 min walk
+- **Knee activation** (Pre-Run Activation from `knee-rehab-protocol.md`)
+- Dynamic drills as Monday
 
 **Main (30–35 min)**
 - 4km continuous easy run @ **6:15–6:25/km**, HR **132–146 bpm**
@@ -112,8 +128,10 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 
 ### Saturday — Combined Intro
 
-**Warm-up (10 min)**
-- Easy 1km jog + dynamic drills
+**Warm-up (15 min)**
+- Easy 1km jog
+- **Knee activation** (Pre-Run Activation from `knee-rehab-protocol.md`)
+- Dynamic drills
 
 **Main (3 rounds, 3 min rest between rounds)**
 > The pattern of Run → Station is the key habit. Don't rush between them.
@@ -156,6 +174,10 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 
 **Warm-up**
 - 500m SkiErg @ easy pace
+
+**Knee Block — Phase 1 (12 min) ← same as Week 1**
+3 rounds of the Phase 1 protocol from `knee-rehab-protocol.md`.
+Note any improvement in heel slide range and single-leg balance vs last week.
 
 **Block A — Posterior Chain (4 rounds, 75s rest)**
 | Exercise | Sets × Reps | Load |
@@ -242,6 +264,10 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 **Warm-up**
 - 500m SkiErg
 
+**Knee Block — Phase 2 (15 min) ← FIRST**
+3 rounds of the Phase 2 protocol from `knee-rehab-protocol.md`.
+Key focus this week: step-down control and nordic hamstring curl quality.
+
 **Block A — Strength (3 rounds, 90s rest)**
 | Exercise | Sets × Reps | Load |
 |---|---|---|
@@ -325,6 +351,10 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 
 **Warm-up**
 - 500m row @ easy pace
+
+**Knee Block — Phase 2 (15 min) ← FIRST**
+3 rounds of the Phase 2 protocol from `knee-rehab-protocol.md`.
+This is your heaviest training week — the knee block is not optional. It protects you through the full Hyrox simulation on Saturday.
 
 **Block A — Strength (3 rounds)**
 | Exercise | Sets × Reps | Load |
@@ -419,6 +449,10 @@ Complete all 8 run-station combinations continuously. Take 2–3 min rest after 
 
 ### Wednesday — Strength + Stations (Moderate)
 
+**Knee Block — Phase 3 (16 min) ← FIRST**
+3 rounds of the Phase 3 protocol from `knee-rehab-protocol.md`.
+Sport-specific loading this week — single-leg box squat and Spanish squat are the priority.
+
 **Block A (3 rounds, reduced load)**
 | Exercise | Sets × Reps | Load |
 |---|---|---|
@@ -481,9 +515,9 @@ Complete all 8 run-station combinations continuously. Take 2–3 min rest after 
 ---
 
 ### Wednesday 25 Jun — Light Touch Gym
-- 2 rounds only, 50% of normal loads
+- **Knee Block — Phase 3 (2 rounds only, taper version)** from `knee-rehab-protocol.md`
 - SkiErg 500m, Wall Balls 30 reps, Farmers Carry 100m
-- No sled, no squats — just keep the body moving
+- No sled, no squats — just keep the body moving and the knee firing
 
 ---
 
