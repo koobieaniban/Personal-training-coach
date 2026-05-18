@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Hyrox Training · July 5</title>
+<style>
+  :root {
+    --bg:        #0f1117;
+    --card:      #1a1d26;
+    --card2:     #22263a;
+    --accent:    #e8ff47;
+    --accent2:   #5b8fff;
+    --text:      #f0f0ef;
+    --muted:     #7a7f94;
+    --done:      #4cdd82;
+    --skipped:   #ff6b6b;
+    --border:    #2c3048;
+    --red-flag:  #ff4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; min-height: 100vh; }
+
+  /* ── Layout ── */
+  .app { max-width: 500px; margin: 0 auto; padding: 0 0 120px; }
+
+  /* ── Header ── */
+  .header { padding: 20px 16px 12px; position: sticky; top: 0; background: var(--bg); z-index: 10; border-bottom: 1px solid var(--border); }
+  .header-top { display: flex; justify-content: space-between; align-items: center; }
+  .logo { font-size: 13px; font-weight: 700; letter-spacing: .1em; color: var(--accent); text-transform: uppercase; }
+  .race-countdown { font-size: 13px; color: var(--muted); }
+  .race-countdown span { color: var(--accent); font-weight: 700; }
+  .header-date { font-size: 22px; font-weight: 700; margin-top: 6px; }
+  .header-week { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Week strip ── */
+  .week-strip { display: flex; gap: 6px; padding: 12px 16px; overflow-x: auto; scrollbar-width: none; }
+  .week-strip::-webkit-scrollbar { display: none; }
+  .day-chip { flex-shrink: 0; width: 52px; border-radius: 10px; padding: 8px 4px; text-align: center; cursor: pointer; border: 1.5px solid var(--border); background: var(--card); transition: all .15s; }
+  .day-chip .chip-label { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .day-chip .chip-date { font-size: 14px; font-weight: 700; }
+  .day-chip .chip-icon { font-size: 16px; margin-top: 3px; }
+  .day-chip.active { border-color: var(--accent); background: #1e2510; }
+  .day-chip.today { border-color: var(--accent2); }
+  .day-chip.done { border-color: var(--done); background: #0d2018; }
+  .day-chip.skipped { border-color: var(--skipped); opacity: .6; }
+  .day-chip.rest { opacity: .5; }
+
+  /* ── Pace targets bar ── */
+  .pace-bar { display: flex; gap: 6px; padding: 0 16px 12px; }
+  .pace-pill { flex: 1; background: var(--card); border-radius: 8px; padding: 8px 10px; text-align: center; border: 1px solid var(--border); }
+  .pace-pill .p-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .pace-pill .p-val { font-size: 17px; font-weight: 800; color: var(--accent); }
+  .pace-pill.adjusted .p-val { color: #ffb347; }
+  .pace-pill .p-adj { font-size: 10px; color: #ffb347; }
+
+  /* ── Session card ── */
+  .session-card { margin: 0 16px 12px; background: var(--card); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
+  .session-header { padding: 14px 16px; display: flex; align-items: center; gap: 10px; }
+  .session-type-badge { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .type-run    { background: #1a2e10; }
+  .type-strength { background: #1a1a2e; }
+  .type-sim    { background: #2e1a1a; }
+  .type-rest   { background: #1a1a1a; }
+  .session-title { flex: 1; }
+  .session-title h2 { font-size: 16px; font-weight: 700; }
+  .session-title .session-subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .status-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
+  .status-pending  { background: #2a2a3a; color: var(--muted); }
+  .status-done     { background: #0d2018; color: var(--done); }
+  .status-skipped  { background: #2a0f0f; color: var(--skipped); }
+
+  /* ── Blocks ── */
+  .session-body { padding: 0 16px 16px; }
+  .block { margin-bottom: 14px; }
+  .block-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+  .block-title.knee-title { color: #7fb3ff; }
+  .block-item { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; font-size: 14px; line-height: 1.45; }
+  .block-item::before { content: '·'; color: var(--muted); flex-shrink: 0; }
+  .pace-inline { color: var(--accent); font-weight: 700; }
+  .knee-note { background: #0d1829; border: 1px solid #1e3a5a; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #8bb8ff; line-height: 1.5; margin-top: 4px; }
+
+  /* ── Complete / Skip buttons ── */
+  .action-bar { display: flex; gap: 8px; padding: 14px 16px 0; border-top: 1px solid var(--border); }
+  .btn { flex: 1; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 700; border: none; cursor: pointer; transition: all .15s; }
+  .btn-complete { background: var(--accent); color: #111; }
+  .btn-complete:hover { background: #d4eb3a; }
+  .btn-skip { background: var(--card2); color: var(--muted); border: 1px solid var(--border); }
+  .btn-skip:hover { color: var(--skipped); border-color: var(--skipped); }
+  .btn-undo { background: var(--card2); color: var(--muted); border: 1px solid var(--border); font-size: 13px; }
+  .btn-feedback { background: var(--accent2); color: #fff; }
+  .btn-full { width: 100%; flex: unset; }
+
+  /* ── Feedback modal ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; display: flex; align-items: flex-end; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal { background: var(--card); border-radius: 20px 20px 0 0; padding: 24px 20px 40px; width: 100%; max-height: 90vh; overflow-y: auto; transform: translateY(100%); transition: transform .25s cubic-bezier(.32,0,.67,0); }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal h3 { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+  .modal .modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+  .modal-close { position: absolute; right: 20px; top: 20px; background: var(--card2); border: none; color: var(--muted); width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 16px; }
+
+  .q-block { margin-bottom: 20px; }
+  .q-label { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; display: block; text-transform: uppercase; letter-spacing: .05em; }
+
+  .feel-row { display: flex; gap: 6px; }
+  .feel-btn { flex: 1; padding: 10px 4px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--card2); cursor: pointer; text-align: center; transition: all .15s; }
+  .feel-btn .feel-emoji { font-size: 22px; display: block; }
+  .feel-btn .feel-label { font-size: 10px; color: var(--muted); margin-top: 3px; display: block; }
+  .feel-btn.selected { border-color: var(--accent); background: #1e2510; }
+  .feel-btn.selected .feel-label { color: var(--accent); }
+
+  .pace-feel-row { display: flex; flex-direction: column; gap: 6px; }
+  .pace-opt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--card2); cursor: pointer; font-size: 14px; transition: all .15s; }
+  .pace-opt input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .pace-opt.selected { border-color: var(--accent); background: #1e2510; }
+
+  .knee-scale { display: flex; gap: 6px; }
+  .knee-btn { flex: 1; padding: 10px 4px; border-radius: 8px; border: 1.5px solid var(--border); background: var(--card2); cursor: pointer; text-align: center; font-size: 13px; font-weight: 700; transition: all .15s; }
+  .knee-btn.selected { border-color: #5b8fff; background: #0d1829; color: #5b8fff; }
+
+  textarea { width: 100%; background: var(--card2); border: 1.5px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; padding: 10px 12px; resize: none; font-family: inherit; min-height: 80px; }
+  textarea:focus { outline: none; border-color: var(--accent2); }
+
+  .save-btn { width: 100%; background: var(--accent); color: #111; font-weight: 800; font-size: 16px; padding: 14px; border-radius: 12px; border: none; cursor: pointer; margin-top: 8px; }
+  .save-btn:hover { background: #d4eb3a; }
+
+  /* ── Adjustment notice ── */
+  .adj-notice { margin: 0 16px 12px; background: #1e2010; border: 1px solid #4a5a20; border-radius: 10px; padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start; }
+  .adj-notice .adj-icon { font-size: 18px; flex-shrink: 0; }
+  .adj-notice .adj-text { font-size: 13px; line-height: 1.5; }
+  .adj-notice .adj-text strong { color: var(--accent); }
+
+  /* ── Stats card ── */
+  .stats-card { margin: 0 16px 12px; background: var(--card); border-radius: 14px; border: 1px solid var(--border); padding: 14px 16px; }
+  .stats-row { display: flex; justify-content: space-between; gap: 12px; }
+  .stat { text-align: center; flex: 1; }
+  .stat .s-val { font-size: 22px; font-weight: 800; color: var(--accent); }
+  .stat .s-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Rest day ── */
+  .rest-card { margin: 0 16px; background: var(--card); border-radius: 14px; border: 1px solid var(--border); padding: 32px 20px; text-align: center; }
+  .rest-card .rest-icon { font-size: 48px; margin-bottom: 12px; }
+  .rest-card h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .rest-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+  /* ── Knee red flag ── */
+  .red-flag-btn { margin: 0 16px 12px; width: calc(100% - 32px); background: transparent; border: 1.5px solid var(--red-flag); color: var(--red-flag); border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+  /* ── Export ── */
+  .export-btn { margin: 0 16px; width: calc(100% - 32px); background: var(--card2); border: 1px solid var(--border); color: var(--muted); border-radius: 10px; padding: 10px; font-size: 13px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="header-top">
+      <div class="logo">Hyrox Plan</div>
+      <div class="race-countdown">Race in <span id="daysToRace">–</span> days</div>
+    </div>
+    <div class="header-date" id="headerDate">–</div>
+    <div class="header-week" id="headerWeek">–</div>
+  </div>
+
+  <div class="week-strip" id="weekStrip"></div>
+  <div class="pace-bar" id="paceBar"></div>
+  <div id="adjNotice"></div>
+  <div id="statsCard"></div>
+  <div id="sessionArea"></div>
+
+  <div style="height:8px"></div>
+  <button class="red-flag-btn" onclick="showRedFlags()">⚠ Knee red flags — know when to stop</button>
+  <div style="height:8px"></div>
+  <button class="export-btn" onclick="exportFeedback()">↓ Export feedback JSON (for analyze_garmin.py)</button>
+</div>
+
+<!-- Feedback Modal -->
+<div class="modal-overlay" id="feedbackModal">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h3 id="modalTitle">How did it go?</h3>
+    <div class="modal-sub" id="modalSub">–</div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+// ── Plan data ─────────────────────────────────────────────────────────────────
+
+const RACE_DATE = new Date('2026-07-05');
+const PLAN_START = new Date('2026-05-18');
+
+const PACE_TARGETS = {
+  1: { easy: '6:25', tempo: '6:10', intervals: '5:55' },
+  2: { easy: '6:12', tempo: '5:57', intervals: '5:42' },
+  3: { easy: '6:00', tempo: '5:45', intervals: '5:30' },
+  4: { easy: '6:00', tempo: '5:45', intervals: '5:30' },
+  5: { easy: '6:00', tempo: '5:45', intervals: '5:30' },
+  6: { easy: '6:15', tempo: '6:00', intervals: '5:30' },
+};
+
+// Session definitions. paceRef: which pace to highlight today.
+// kneePhase: 1/2/3 or 'activation' (pre-run only)
+const SESSIONS = {
+  // ── WEEK 1 ──
+  '2026-05-18': { rest: true, restMsg: 'Plan starts tomorrow. Prep your gym kit and read through Week 1.' },
+  '2026-05-19': {
+    week: 1, type: 'run', icon: '🏃', title: 'Run A — Reintroduction',
+    subtitle: 'First run back. HR governs everything.',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['5 min brisk walk', 'Knee activation (5 min): clamshells ×15 each · TKE ×15 each · glute bridge ×20 · single-leg balance 30s each · lateral band walk ×10 each dir'] },
+      { title: 'Main', items: ['3km easy @ [EASY] — HR 132–146 bpm throughout', 'If HR stays below 146: 4 × 100m strides @ ~5:00/km, walk back full recovery', 'STOP if sharp knee pain (dull ache is OK)'] },
+      { title: 'Cool-down', items: ['Post-session knee recovery (8 min): quad · hamstring · hip flexor · IT band foam roll · calf stretch'] },
+    ],
+    note: 'No intervals this week. Week 1 Monday is pure aerobic reintroduction.',
+  },
+  '2026-05-20': { rest: true, restMsg: 'Rest day. Light walk OK. Do your post-session knee recovery stretches.' },
+  '2026-05-21': {
+    week: 1, type: 'strength', icon: '💪', title: 'Strength + Stations',
+    subtitle: 'Knee Block Phase 1 · SkiErg intro · Burpee practice',
+    kneePhase: 1,
+    blocks: [
+      { title: 'Warm-up', items: ['400m SkiErg easy — practice hip hinge, arms drive the machine'] },
+      { title: 'Knee Block — Phase 1 (12 min, 3 rounds)', knee: true, items: ['TKE (band) ×20 each leg · Full lockout, 1s pause', 'Short Arc Quad ×15 each · 30° → full lock, 2s hold', 'Straight Leg Raise ×15 each · 3s lower', 'Clamshell (band) ×20 each side · keep hips stacked', 'Single-leg Balance 45s each · eyes open', 'Heel Slide ×15 each · slide to comfortable end range only'] },
+      { title: 'Block A — Posterior Chain (3 rounds, 60s rest)', items: ['Goblet Squat 3×12 @ 12–16kg', 'Romanian Deadlift 3×10 @ 40–50kg', 'Single-leg Step-up to 40cm box 3×10 each · bodyweight', 'Copenhagen Plank 3×20s each'] },
+      { title: 'Block B — Stations (3 rounds, 90s rest)', items: ['SkiErg 250m @ easy pace', 'Farmers Carry 50m @ 2×16kg · walk tall', 'Hollow hold 30s'] },
+      { title: 'Station Practice', items: ['Burpee Broad Jumps: 4 sets × 10 jumps, low intensity · focus on soft-knee landing'] },
+      { title: 'Cool-down', items: ['Full knee recovery protocol (8 min)'] },
+    ],
+  },
+  '2026-05-22': { rest: true, restMsg: 'Rest day.' },
+  '2026-05-23': {
+    week: 1, type: 'run', icon: '🏃', title: 'Run B — Easy Aerobic',
+    subtitle: 'HR-governed easy run. Build time on feet.',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['5 min walk', 'Knee activation (5 min) · same as Monday'] },
+      { title: 'Main', items: ['4km continuous @ [EASY] · HR 132–146 bpm', 'If HR stayed in Z2: 4 × 200m @ 5:20/km, 90s rest', 'HR is the governor — not your legs\' feel'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol (8 min): hip flexor lunge 90s each · IT band foam roll 60s each · calf stretch on step 60s each'] },
+    ],
+  },
+  '2026-05-24': {
+    week: 1, type: 'sim', icon: '🔥', title: 'Saturday — Combined Intro',
+    subtitle: 'Run → Station. Build the habit.',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Easy 1km jog', 'Knee activation (5 min)', 'Dynamic drills: leg swings · hip circles · A-skips'] },
+      { title: 'Main — 3 rounds, 3 min rest between', items: ['Round 1: 500m @ 5:40/km → SkiErg 300m (easy)', 'Round 2: 500m @ 5:40/km → 12 Burpee Broad Jumps', 'Round 3: 500m @ 5:40/km → Farmers Carry 50m (2×16kg)', 'Move from run to station immediately (≤30s transition)'] },
+      { title: 'Cool-down', items: ['Easy 500m jog · full knee recovery protocol'] },
+    ],
+    note: 'Technique focus today, not pace. The run→station transition is the skill.',
+  },
+
+  // ── WEEK 2 ──
+  '2026-05-25': { rest: true, restMsg: 'Rest day. Well done on Week 1.' },
+  '2026-05-26': {
+    week: 2, type: 'run', icon: '🏃', title: 'Run A — Volume Build',
+    subtitle: 'More km, first intervals.',
+    paceRef: 'intervals', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['5 min walk · Knee activation (5 min) · Dynamic drills'] },
+      { title: 'Main', items: ['5km easy run @ [EASY]', 'Then: 6 × 300m @ [INTERVALS], 90s rest between'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-05-27': { rest: true, restMsg: 'Rest day.' },
+  '2026-05-28': {
+    week: 2, type: 'strength', icon: '💪', title: 'Strength + Stations',
+    subtitle: 'Knee Block Phase 1 · Sled intro · Rowing intro',
+    kneePhase: 1,
+    blocks: [
+      { title: 'Warm-up', items: ['500m SkiErg easy'] },
+      { title: 'Knee Block — Phase 1 (12 min, 3 rounds)', knee: true, items: ['Same protocol as Week 1 Wednesday', 'Note any improvement in heel slide range and single-leg balance'] },
+      { title: 'Block A — Posterior Chain (4 rounds, 75s rest)', items: ['Back Squat 4×8 @ 40–50kg', 'Barbell Hip Thrust 4×12 @ 50–60kg', 'Walking Lunges 4×20 steps (bodyweight → +5kg DBs)'] },
+      { title: 'Block B — Hyrox Stations (3 rounds, 2 min rest)', items: ['SkiErg 500m · build pace each round', 'Wall Balls 20 reps @ 6kg to 3.05m target', 'Farmers Carry 100m @ 2×20kg'] },
+      { title: 'Sled Intro', items: ['3 × 50m sled push @ empty sled · low hips, drive with legs', '3 × 50m sled pull @ empty sled · hand-over-hand rope technique'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-05-29': { rest: true, restMsg: 'Rest day.' },
+  '2026-05-30': {
+    week: 2, type: 'run', icon: '🏃', title: 'Run B — Tempo Introduction',
+    subtitle: 'First proper tempo effort.',
+    paceRef: 'tempo', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation (5 min) · 10 min easy jog'] },
+      { title: 'Main', items: ['3 × 1km @ [TEMPO] · 2 min standing rest between', 'Feel: comfortably hard — 2–3 words but not a conversation', '1km cool-down easy jog'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-05-31': {
+    week: 2, type: 'sim', icon: '🔥', title: 'Saturday — Hyrox Simulation (Short)',
+    subtitle: '4 rounds, one station each. First sled work.',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation (5 min) · 10 min easy jog'] },
+      { title: 'Main — 4 rounds, 3 min rest between', items: ['Round 1: 1km @ 5:40/km → Row 500m', 'Round 2: 1km @ 5:40/km → Sled Push 50m (empty sled)', 'Round 3: 1km @ 5:40/km → SkiErg 500m', 'Round 4: 1km @ 5:40/km → Wall Balls 25 reps (6kg)'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+    note: 'First sled session — focus entirely on technique. Hip hinge, drive with legs, stay low.',
+  },
+
+  // ── WEEK 3 ──
+  '2026-06-01': { rest: true, restMsg: 'Rest day. Week 3 is when race pace starts.' },
+  '2026-06-02': {
+    week: 3, type: 'run', icon: '🏃', title: 'Run A — 1km Repeats at Race Pace',
+    subtitle: 'First time hitting 5:30/km target.',
+    paceRef: 'intervals', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation (5 min) · 1km easy jog · drills'] },
+      { title: 'Main', items: ['6 × 1km @ [INTERVALS] (race pace) · 90s rest between', 'Benchmark session — note actual pace and how each km felt', 'If you can\'t hold [INTERVALS] yet: run best sustainable effort and log it'] },
+      { title: 'Cool-down', items: ['Easy 1km jog · Knee recovery protocol'] },
+    ],
+  },
+  '2026-06-03': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-04': {
+    week: 3, type: 'strength', icon: '💪', title: 'Strength + Hyrox Circuit',
+    subtitle: 'Knee Block Phase 2 · Loaded sleds · Full circuit',
+    kneePhase: 2,
+    blocks: [
+      { title: 'Warm-up', items: ['500m SkiErg'] },
+      { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['TKE (heavier band) ×20 each leg', 'Step-Down (eccentric) ×12 each leg · 20–30cm box, 3–4 count lower', 'Single-leg Glute Bridge ×12 each · keep hips level', 'Nordic Hamstring Curl (assisted) ×8 · 3–4 count lower, assist up', 'Lateral Band Walk ×20 steps each direction', 'Wall Sit 45s · add 10s each week', 'Single-leg Calf Raise ×15 each · 3 count eccentric'] },
+      { title: 'Block A — Strength (3 rounds, 90s rest)', items: ['Back Squat 3×6 @ 60–70% 1RM', 'Romanian Deadlift 3×8 @ 60–70kg', 'Single-leg Step-up + 10kg DBs 3×8 each', 'Barbell Hip Thrust 3×10 @ 70kg'] },
+      { title: 'Block B — Hyrox Circuit (2 rounds, 5 min rest)', items: ['SkiErg 500m', 'Sled Push 50m @ 80–100kg (build toward race weight 152kg)', 'Sled Pull 50m @ 60–75kg (build toward race weight 103kg)', 'Burpee Broad Jumps 40m (~20 jumps)'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-06-05': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-06': {
+    week: 3, type: 'run', icon: '🏃', title: 'Run B — Tempo',
+    paceRef: 'tempo', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
+      { title: 'Main', items: ['2 × 2km @ [TEMPO] · 3 min rest', '4 × 200m strides @ 4:30/km, walk back'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-06-07': {
+    week: 3, type: 'sim', icon: '🔥', title: 'Saturday — Extended Simulation (6 Rounds)',
+    subtitle: 'Loaded sleds · run→station transitions',
+    paceRef: 'intervals', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
+      { title: 'Main — 6 rounds, 2–3 min rest · move straight to station (≤30s)', items: ['R1: 1km @ [INTERVALS] → SkiErg 500m', 'R2: 1km @ [INTERVALS] → Sled Push 50m (moderate load)', 'R3: 1km @ [INTERVALS] → Sled Pull 50m (moderate load)', 'R4: 1km @ [INTERVALS] → Burpee Broad Jumps 40m', 'R5: 1km @ [INTERVALS] → Row 500m', 'R6: 1km @ [INTERVALS] → Farmers Carry 100m (2×20kg)'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+
+  // ── WEEK 4 ──
+  '2026-06-08': { rest: true, restMsg: 'Rest day. This week is your peak training week.' },
+  '2026-06-09': {
+    week: 4, type: 'run', icon: '🏃', title: 'Run A — Race Pace Volume',
+    subtitle: '8 × 1km at race pace. Simulates the 8 runs on race day.',
+    paceRef: 'intervals', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
+      { title: 'Main', items: ['8 × 1km @ [INTERVALS] · 60s rest only (minimal recovery = race simulation)', 'This is the closest training rep of your 8 race runs', '1km easy cool-down jog'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-06-10': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-11': {
+    week: 4, type: 'strength', icon: '💪', title: 'Strength + Full Stations',
+    subtitle: 'Knee Block Phase 2 · Full Hyrox circuit × 2',
+    kneePhase: 2,
+    blocks: [
+      { title: 'Warm-up', items: ['500m row easy'] },
+      { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['This is your heaviest training week — the knee block is not optional', 'Same Phase 2 protocol · focus on step-down quality and nordic curl'] },
+      { title: 'Block A — Strength (3 rounds)', items: ['Goblet Squat 3×10 @ 24kg KB', 'Romanian Deadlift 3×8 @ 70–75kg', 'Barbell Hip Thrust 3×10 @ 80kg', 'Copenhagen Plank 3×25s each'] },
+      { title: 'Block B — Full Hyrox Circuit (2 rounds, 6 min rest)', items: ['SkiErg 1000m', 'Sled Push 50m @ 120–140kg (target 152kg)', 'Sled Pull 50m @ 85–95kg (target 103kg)', 'Burpee Broad Jumps 80m (full race distance)', 'Row 1000m @ 2:00–2:05/500m split', 'Farmers Carry 200m @ 2×24kg', 'Sandbag Lunges 100m @ 20kg', 'Wall Balls 50 reps @ 6kg'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-06-12': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-13': {
+    week: 4, type: 'run', icon: '🏃', title: 'Run B — Easy Recovery',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation'] },
+      { title: 'Main', items: ['Easy 5km @ [EASY] — genuinely easy, legs should feel good after', '4 × 200m strides at the end'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol + foam roll'] },
+    ],
+  },
+  '2026-06-14': {
+    week: 4, type: 'sim', icon: '🔥', title: 'FULL HYROX SIMULATION 🏁',
+    subtitle: 'Treat this like race day. All 8 runs + all 8 stations.',
+    paceRef: 'intervals', kneePhase: 'activation',
+    blocks: [
+      { title: 'Pre-session (30 min before)', items: ['Eat a normal pre-race breakfast', 'Arrive early, full 15 min warm-up'] },
+      { title: 'Warm-up (15 min)', items: ['Easy 1km jog · 500m SkiErg easy', 'Knee activation · Dynamic drills', '2 × 100m Burpee Broad Jump practice'] },
+      { title: 'Full Simulation — 8 rounds', items: ['R1: 1km @ [INTERVALS] → SkiErg 1000m', 'R2: 1km @ [INTERVALS] → Sled Push 50m (100–152kg)', 'R3: 1km @ [INTERVALS] → Sled Pull 50m (75–103kg)', 'R4: 1km @ [INTERVALS] → Burpee Broad Jumps 80m', 'R5: 1km @ [INTERVALS] → Row 1000m', 'R6: 1km @ [INTERVALS] → Farmers Carry 200m (2×24kg)', 'R7: 1km @ [INTERVALS] → Sandbag Lunges 100m (20kg)', 'R8: 1km @ [INTERVALS] → Wall Balls 100 reps (6kg)', 'Optional 2–3 min rest after round 4'] },
+      { title: 'Post-simulation', items: ['RECORD YOUR SPLITS — note pace + how each station felt 1–10', 'Cool-down walk 5 min · full knee recovery protocol'] },
+    ],
+    note: 'This data tells us where to focus in Week 5. Log everything in the feedback form.',
+  },
+
+  // ── WEEK 5 ──
+  '2026-06-15': { rest: true, restMsg: 'Rest day. You just did your biggest week. Earn the rest.' },
+  '2026-06-16': {
+    week: 5, type: 'run', icon: '🏃', title: 'Run A — Sharpening',
+    subtitle: '5s faster than race pace. Build a buffer.',
+    paceRef: 'intervals', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
+      { title: 'Main', items: ['5 × 1km @ [INTERVALS] (5:20/km — 10s faster than race pace)', '2km easy cool-down jog'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-06-17': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-18': {
+    week: 5, type: 'strength', icon: '💪', title: 'Strength + Stations (Moderate)',
+    subtitle: 'Knee Block Phase 3 · Reduced volume, quality focus',
+    kneePhase: 3,
+    blocks: [
+      { title: 'Warm-up', items: ['500m SkiErg easy'] },
+      { title: 'Knee Block — Phase 3 (16 min, 3 rounds)', knee: true, items: ['TKE (heaviest band) ×20 each leg', 'Single-leg Box Squat to 40–50cm box ×10 each · 3-count descent', 'Step-Down increased height (35–40cm) ×12 each', 'Nordic Hamstring Curl (less assistance) ×8', 'Spanish Squat (band) 60s', 'Reverse Lunge with DBs ×10 each', 'Single-leg Calf Raise (weighted) ×12 each'] },
+      { title: 'Block A — Strength (3 rounds, reduced)', items: ['Back Squat 3×8 @ 65% of Week 4', 'Barbell Hip Thrust 3×10 @ 75kg', 'Walking Lunges 3×16 (light DBs or bodyweight)'] },
+      { title: 'Block B — Stations (2 rounds, 5 min rest)', items: ['SkiErg 1000m', 'Wall Balls 75 reps (6kg)', 'Farmers Carry 200m (2×24kg)', 'Sled Push + Pull 50m each (race weight)'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-06-19': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-20': {
+    week: 5, type: 'run', icon: '🏃', title: 'Run B — Easy + Strides',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation'] },
+      { title: 'Main', items: ['Easy 4km @ [EASY]', '6 × 100m strides @ 4:30/km · walk back full recovery'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-06-21': {
+    week: 5, type: 'sim', icon: '🔥', title: 'Saturday — Mini Simulation (6 Rounds)',
+    subtitle: 'Race intensity, reduced volume.',
+    paceRef: 'intervals', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
+      { title: 'Main — 6 rounds, 2 min rest', items: ['R1: 1km @ [INTERVALS] → SkiErg 500m', 'R2: 1km @ [INTERVALS] → Sled Push 50m (race weight)', 'R3: 1km @ [INTERVALS] → Burpee Broad Jumps 40m', 'R4: 1km @ [INTERVALS] → Row 500m', 'R5: 1km @ [INTERVALS] → Farmers Carry 100m (2×24kg)', 'R6: 1km @ [INTERVALS] → Wall Balls 50 reps'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+
+  // ── WEEK 6 TAPER ──
+  '2026-06-22': { rest: true, restMsg: 'Rest day. Taper week begins. Do not add extra training.' },
+  '2026-06-23': {
+    week: 6, type: 'run', icon: '🏃', title: 'Easy Run — Taper',
+    subtitle: 'Keep the legs moving. Nothing more.',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation'] },
+      { title: 'Main', items: ['3km easy @ [EASY]', '4 × 100m strides at the end'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+    note: 'That\'s it. Do not be tempted to do more.',
+  },
+  '2026-06-24': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-25': {
+    week: 6, type: 'strength', icon: '💪', title: 'Light Touch Gym — Taper',
+    subtitle: 'Knee Block Phase 3 (2 rounds only). Stay sharp, no fatigue.',
+    kneePhase: 3,
+    blocks: [
+      { title: 'Knee Block — Phase 3 (10 min, 2 rounds only)', knee: true, items: ['Same Phase 3 protocol · 2 rounds, not 3', 'Goal: keep the knee firing, not accumulate fatigue'] },
+      { title: 'Stations (light touch)', items: ['SkiErg 500m', 'Wall Balls 30 reps (6kg)', 'Farmers Carry 100m (2×24kg)', 'No sled, no squats'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+    note: 'Every set should feel easy. If it\'s hard, stop.',
+  },
+  '2026-06-26': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-27': { rest: true, restMsg: 'Rest or gentle 20 min walk. Zero intensity. Sleep 8+ hours tonight.' },
+  '2026-06-28': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-29': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-30': {
+    week: 6, type: 'run', icon: '🏃', title: 'Shakeout Run',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation'] },
+      { title: 'Main', items: ['2km very easy jog', '3 × 100m at race pace (5:30/km) just to remind the legs'] },
+      { title: 'Cool-down', items: ['Light knee recovery stretches'] },
+    ],
+  },
+  '2026-07-01': { rest: true, restMsg: 'Rest day. Eat well. Pack your kit.' },
+  '2026-07-02': { rest: true, restMsg: 'Light walk or stretch only. Get 8+ hours sleep tonight.' },
+  '2026-07-03': { rest: true, restMsg: 'Rest. Hydrate. Sleep.' },
+  '2026-07-04': { rest: true, restMsg: 'Rest day. Lay out your kit. Eat a normal dinner. Lights out early.' },
+  '2026-07-05': {
+    week: 6, type: 'sim', icon: '🏆', title: 'RACE DAY — Hyrox Open Male',
+    subtitle: 'All of this was for today. Trust your training.',
+    blocks: [
+      { title: 'Morning protocol', items: ['Wake 2.5–3 hrs before race start', 'Breakfast: oats + banana or toast + eggs (something you\'ve practised)', 'Arrive at venue 60 min before start'] },
+      { title: 'Race warm-up (15 min before)', items: ['10 min easy jog · dynamic drills', '2 × 100m Burpee Broad Jump practice (light)', '2 × SkiErg 150m at easy effort'] },
+      { title: 'Race strategy', items: ['Runs 1–3: hold BACK — adrenaline will push you faster than 5:30', 'SkiErg: 4:00–4:30 total · long arms, full hinge', 'Sled Push (152kg): low hips, small fast steps', 'Sled Pull (103kg): smooth hand-over-hand rhythm', 'Burpee Broad Jumps: breathe on the way up, jump for distance', 'Row: 1:58–2:05/500m split — hold this no matter what', 'Farmers Carry (2×24kg): walk fast, change hands at 100m', 'Sandbag Lunges (20kg): deep lunge, drive through front heel', 'Wall Balls (100 reps): find a rhythm and stick to it — squat below parallel every rep', 'Runs 5–8: this is where the race is won'] },
+    ],
+    note: 'You\'ve been doing this since May 19. The knee work, the runs, the simulations. Enjoy it.',
+  },
+};
+
+// ── State management ──────────────────────────────────────────────────────────
+
+function loadState() {
+  try { return JSON.parse(localStorage.getItem('hyrox_state') || '{}'); } catch { return {}; }
+}
+function saveState(s) { localStorage.setItem('hyrox_state', JSON.stringify(s)); }
+
+let state = loadState();
+// state = { completions: {dateStr: 'done'|'skipped'}, feedback: {dateStr: {...}}, paceAdj: {week: seconds} }
+if (!state.completions) state.completions = {};
+if (!state.feedback)    state.feedback    = {};
+if (!state.paceAdj)     state.paceAdj     = {};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function dateKey(d) {
+  return d.toISOString().slice(0, 10);
+}
+function today() { return dateKey(new Date()); }
+function getWeekNum(dateStr) {
+  const d = new Date(dateStr);
+  const diff = Math.floor((d - PLAN_START) / 86400000);
+  return Math.max(1, Math.min(6, Math.floor(diff / 7) + 1));
+}
+function daysToRace() {
+  const diff = Math.ceil((RACE_DATE - new Date()) / 86400000);
+  return Math.max(0, diff);
+}
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+function adjustedPace(week, key, addSecs) {
+  const base = PACE_TARGETS[week]?.[key];
+  if (!base) return '–';
+  const adj = (state.paceAdj[week] || 0) + (addSecs || 0);
+  const [m, s] = base.split(':').map(Number);
+  const total = Math.max(180, m * 60 + s + adj);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+function injectPace(text, week) {
+  return text
+    .replace(/\[EASY\]/g,      `<span class="pace-inline">${adjustedPace(week, 'easy')}/km</span>`)
+    .replace(/\[TEMPO\]/g,     `<span class="pace-inline">${adjustedPace(week, 'tempo')}/km</span>`)
+    .replace(/\[INTERVALS\]/g, `<span class="pace-inline">${adjustedPace(week, 'intervals')}/km</span>`);
+}
+
+// ── Pace adjustment engine ────────────────────────────────────────────────────
+
+function recomputePaceAdj(week) {
+  const weekFeedback = Object.entries(state.feedback)
+    .filter(([k]) => {
+      const s = SESSIONS[k];
+      return s && s.week === week && s.type === 'run';
+    })
+    .map(([, v]) => v.pace_feel || 0);
+
+  if (weekFeedback.length < 2) return;
+  const avg = weekFeedback.reduce((a, b) => a + b, 0) / weekFeedback.length;
+  // avg < -0.5 = consistently easier → adjust paces 5s faster
+  // avg > 0.5  = consistently harder  → adjust paces 5–10s slower
+  let adj = 0;
+  if (avg < -1.0)      adj = -10;
+  else if (avg < -0.5) adj = -5;
+  else if (avg > 1.0)  adj =  15;
+  else if (avg > 0.5)  adj =  10;
+  state.paceAdj[week] = adj;
+  saveState(state);
+}
+
+// ── Selected view date ────────────────────────────────────────────────────────
+
+let viewDate = today();
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function render() {
+  renderHeader();
+  renderWeekStrip();
+  renderPaceBar();
+  renderAdjNotice();
+  renderSession();
+}
+
+function renderHeader() {
+  document.getElementById('daysToRace').textContent = daysToRace();
+  document.getElementById('headerDate').textContent = formatDate(viewDate);
+  const week = getWeekNum(viewDate);
+  const session = SESSIONS[viewDate];
+  const wkLabel = session && !session.rest ? `Week ${week} of 6` : `Week ${week} — Rest Day`;
+  document.getElementById('headerWeek').textContent = wkLabel;
+}
+
+function renderWeekStrip() {
+  const week = getWeekNum(viewDate);
+  const weekStart = new Date(PLAN_START.getTime() + (week - 1) * 7 * 86400000);
+  const strip = document.getElementById('weekStrip');
+  strip.innerHTML = '';
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart.getTime() + i * 86400000);
+    const dk = dateKey(d);
+    const s = SESSIONS[dk];
+    const isToday = dk === today();
+    const isView = dk === viewDate;
+    const comp = state.completions[dk];
+
+    let icon = '–';
+    let cls = 'rest';
+    if (s && !s.rest) {
+      icon = s.icon;
+      cls = s.type;
+      if (comp === 'done')    cls += ' done';
+      else if (comp === 'skipped') cls += ' skipped';
+    }
+    if (isView)  cls += ' active';
+    if (isToday) cls += ' today';
+
+    const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    strip.innerHTML += `
+      <div class="day-chip ${cls}" onclick="viewDate='${dk}';render()">
+        <div class="chip-label">${labels[i]}</div>
+        <div class="chip-date">${d.getDate()}</div>
+        <div class="chip-icon">${comp === 'done' ? '✓' : comp === 'skipped' ? '✗' : icon}</div>
+      </div>`;
+  }
+}
+
+function renderPaceBar() {
+  const session = SESSIONS[viewDate];
+  if (!session || session.rest) { document.getElementById('paceBar').innerHTML = ''; return; }
+  const week = session.week || getWeekNum(viewDate);
+  const adj = state.paceAdj[week] || 0;
+
+  const pills = [
+    { label: 'Easy', key: 'easy' },
+    { label: 'Tempo', key: 'tempo' },
+    { label: 'Intervals', key: 'intervals' },
+  ];
+  document.getElementById('paceBar').innerHTML = pills.map(p => {
+    const isAdj = adj !== 0;
+    const adjStr = isAdj ? (adj > 0 ? `+${adj}s slower` : `${Math.abs(adj)}s faster`) : '';
+    return `<div class="pace-pill ${isAdj ? 'adjusted' : ''}">
+      <div class="p-label">${p.label}</div>
+      <div class="p-val">${adjustedPace(week, p.key)}</div>
+      ${isAdj && p.key === session.paceRef ? `<div class="p-adj">${adjStr}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderAdjNotice() {
+  const el = document.getElementById('adjNotice');
+  const session = SESSIONS[viewDate];
+  if (!session || session.rest) { el.innerHTML = ''; return; }
+  const week = session.week || getWeekNum(viewDate);
+  const adj = state.paceAdj[week] || 0;
+  if (adj === 0) { el.innerHTML = ''; return; }
+
+  const msg = adj < 0
+    ? `Based on your recent feedback, this week's pace targets have been bumped <strong>${Math.abs(adj)}s/km faster</strong>. You're adapting well.`
+    : `Paces adjusted <strong>${adj}s/km slower</strong> this week based on your feedback. Smart — build the base first.`;
+  el.innerHTML = `<div class="adj-notice"><div class="adj-icon">${adj < 0 ? '⚡' : '🔄'}</div><div class="adj-text">${msg}</div></div>`;
+}
+
+function renderSession() {
+  const session = SESSIONS[viewDate];
+  const area = document.getElementById('sessionArea');
+
+  if (!session) {
+    area.innerHTML = `<div class="rest-card"><div class="rest-icon">😴</div><h2>Rest Day</h2><p>No session scheduled.</p></div>`;
+    return;
+  }
+  if (session.rest) {
+    area.innerHTML = `<div class="rest-card"><div class="rest-icon">😴</div><h2>Rest Day</h2><p>${session.restMsg}</p></div>`;
+    return;
+  }
+
+  const week = session.week || getWeekNum(viewDate);
+  const comp = state.completions[viewDate];
+  const hasFeedback = !!state.feedback[viewDate];
+  const statusLabel = comp === 'done' ? 'Done ✓' : comp === 'skipped' ? 'Skipped' : 'Pending';
+  const statusCls = comp === 'done' ? 'done' : comp === 'skipped' ? 'skipped' : 'pending';
+
+  const blocksHtml = session.blocks.map(b => `
+    <div class="block">
+      <div class="block-title ${b.knee ? 'knee-title' : ''}">${b.title}</div>
+      ${b.knee ? `<div class="knee-note">Full details in <strong>knee-rehab-protocol.md</strong></div>` : ''}
+      ${b.items.map(item => `<div class="block-item">${injectPace(item, week)}</div>`).join('')}
+    </div>`).join('');
+
+  const noteHtml = session.note ? `<div class="knee-note" style="margin-bottom:14px">💡 ${session.note}</div>` : '';
+
+  let actionHtml = '';
+  if (!comp) {
+    actionHtml = `<div class="action-bar">
+      <button class="btn btn-complete" onclick="markComplete('done')">Mark complete ✓</button>
+      <button class="btn btn-skip" onclick="markComplete('skipped')">Skip</button>
+    </div>`;
+  } else if (comp === 'done' && !hasFeedback) {
+    actionHtml = `<div class="action-bar">
+      <button class="btn btn-feedback btn-full" onclick="openFeedback()">Log how it felt →</button>
+    </div><div style="padding:8px 16px 0"><button class="btn btn-undo btn-full" onclick="undoComplete()">Undo</button></div>`;
+  } else if (comp === 'done' && hasFeedback) {
+    actionHtml = `<div class="action-bar">
+      <button class="btn btn-undo" onclick="openFeedback()">Edit feedback</button>
+      <button class="btn btn-undo" onclick="undoComplete()">Undo</button>
+    </div>`;
+  } else {
+    actionHtml = `<div class="action-bar"><button class="btn btn-undo btn-full" onclick="undoComplete()">Undo skip</button></div>`;
+  }
+
+  area.innerHTML = `
+    <div class="session-card">
+      <div class="session-header">
+        <div class="session-type-badge type-${session.type}">${session.icon}</div>
+        <div class="session-title">
+          <h2>${session.title}</h2>
+          <div class="session-subtitle">${session.subtitle || ''}</div>
+        </div>
+        <div class="status-badge status-${statusCls}">${statusLabel}</div>
+      </div>
+      <div class="session-body">
+        ${noteHtml}${blocksHtml}
+      </div>
+      ${actionHtml}
+    </div>`;
+
+  // Stats card
+  renderStats();
+}
+
+function renderStats() {
+  const el = document.getElementById('statsCard');
+  const doneCount = Object.values(state.completions).filter(v => v === 'done').length;
+  const totalSessions = Object.values(SESSIONS).filter(s => s && !s.rest).length;
+  const pct = Math.round(doneCount / totalSessions * 100);
+
+  el.innerHTML = `<div class="stats-card">
+    <div class="stats-row">
+      <div class="stat"><div class="s-val">${doneCount}</div><div class="s-label">Sessions done</div></div>
+      <div class="stat"><div class="s-val">${pct}%</div><div class="s-label">Complete</div></div>
+      <div class="stat"><div class="s-val">${daysToRace()}</div><div class="s-label">Days to race</div></div>
+    </div>
+  </div>`;
+}
+
+// ── Complete / Skip ───────────────────────────────────────────────────────────
+
+function markComplete(status) {
+  state.completions[viewDate] = status;
+  saveState(state);
+  render();
+  if (status === 'done') setTimeout(openFeedback, 300);
+}
+function undoComplete() {
+  delete state.completions[viewDate];
+  delete state.feedback[viewDate];
+  saveState(state);
+  render();
+}
+
+// ── Feedback modal ────────────────────────────────────────────────────────────
+
+function openFeedback() {
+  const session = SESSIONS[viewDate];
+  if (!session || session.rest) return;
+  const week = session.week || getWeekNum(viewDate);
+  const existing = state.feedback[viewDate] || {};
+
+  document.getElementById('modalTitle').textContent = 'How did it go?';
+  document.getElementById('modalSub').textContent = `${session.title} · ${formatDate(viewDate)}`;
+
+  const isRun = session.type === 'run' || session.type === 'sim';
+
+  const feelOptions = [
+    { val: -2, emoji: '😴', label: 'Very easy' },
+    { val: -1, emoji: '🙂', label: 'Easy' },
+    { val:  0, emoji: '😤', label: 'Just right' },
+    { val:  1, emoji: '😰', label: 'Hard' },
+    { val:  2, emoji: '🤮', label: 'Too hard' },
+  ];
+  const feelHtml = feelOptions.map(o => `
+    <button class="feel-btn ${existing.overall_feel === o.val ? 'selected' : ''}"
+      onclick="selectFeel(this, 'overall_feel', ${o.val})">
+      <span class="feel-emoji">${o.emoji}</span>
+      <span class="feel-label">${o.label}</span>
+    </button>`).join('');
+
+  const paceOptions = [
+    { val: -2, label: '⚡ Much easier than expected — push harder next time' },
+    { val: -1, label: '👍 Slightly easy — could have gone faster' },
+    { val:  0, label: '✅ Right on target — perfect effort' },
+    { val:  1, label: '😓 Slightly too hard — had to slow down' },
+    { val:  2, label: '🚫 Couldn\'t hit the pace — need to back off' },
+  ];
+  const paceHtml = isRun ? `
+    <div class="q-block">
+      <span class="q-label">How did the pace feel?</span>
+      <div class="pace-feel-row">
+        ${paceOptions.map(o => `
+          <label class="pace-opt ${existing.pace_feel === o.val ? 'selected' : ''}"
+            onclick="selectPaceFeel(this, ${o.val})">
+            <input type="radio" name="pace_feel" ${existing.pace_feel === o.val ? 'checked' : ''}> ${o.label}
+          </label>`).join('')}
+      </div>
+    </div>` : '';
+
+  const kneeNums = [0, 1, 2, 3, 4, 5];
+  const kneeHtml = `
+    <div class="q-block">
+      <span class="q-label">Knee discomfort? (0 = none · 5 = significant pain)</span>
+      <div class="knee-scale">
+        ${kneeNums.map(n => `<button class="knee-btn ${existing.knee_pain === n ? 'selected' : ''}"
+          onclick="selectKnee(this, ${n})">${n}</button>`).join('')}
+      </div>
+    </div>`;
+
+  document.getElementById('modalBody').innerHTML = `
+    <div class="q-block">
+      <span class="q-label">Overall effort?</span>
+      <div class="feel-row">${feelHtml}</div>
+    </div>
+    ${paceHtml}
+    ${kneeHtml}
+    <div class="q-block">
+      <span class="q-label">Notes (optional)</span>
+      <textarea id="feedbackNotes" placeholder="What went well? Any issues with the knee? Anything to remember for next session…">${existing.notes || ''}</textarea>
+    </div>
+    <button class="save-btn" onclick="saveFeedback()">Save feedback</button>`;
+
+  document.getElementById('feedbackModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('feedbackModal').classList.remove('open');
+}
+
+function selectFeel(el, key, val) {
+  el.closest('.feel-row').querySelectorAll('.feel-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  el.dataset.key = key;
+  el.dataset.val = val;
+}
+
+function selectPaceFeel(el, val) {
+  el.closest('.pace-feel-row').querySelectorAll('.pace-opt').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  el._val = val;
+}
+
+function selectKnee(el, val) {
+  el.closest('.knee-scale').querySelectorAll('.knee-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  el._val = val;
+}
+
+function saveFeedback() {
+  const overall = document.querySelector('.feel-btn.selected');
+  const pace = document.querySelector('.pace-opt.selected');
+  const knee = document.querySelector('.knee-btn.selected');
+  const notes = document.getElementById('feedbackNotes')?.value || '';
+
+  const session = SESSIONS[viewDate];
+  const week = session?.week || getWeekNum(viewDate);
+
+  state.feedback[viewDate] = {
+    date: viewDate,
+    session: session?.title,
+    overall_feel: overall ? parseInt(overall.dataset.val) : null,
+    pace_feel: pace ? pace._val : null,
+    knee_pain: knee ? knee._val : null,
+    notes,
+    timestamp: new Date().toISOString(),
+  };
+  saveState(state);
+  recomputePaceAdj(week);
+  closeModal();
+  render();
+}
+
+// ── Red flags ─────────────────────────────────────────────────────────────────
+
+function showRedFlags() {
+  document.getElementById('modalTitle').textContent = '⚠ Knee Red Flags';
+  document.getElementById('modalSub').textContent = 'Stop training immediately if you notice any of these';
+  document.getElementById('modalBody').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+      ${[
+        'Sharp, stabbing or electric pain inside the joint',
+        'Swelling or warmth that persists more than 24 hours',
+        'A locking, clicking, or catching sensation under load',
+        'Pain that forces you to change your normal running gait',
+        'Pain that does not resolve fully overnight',
+      ].map(f => `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:#2a0f0f;border-radius:8px;font-size:14px"><span style="color:#ff4444;flex-shrink:0">✕</span><span>${f}</span></div>`).join('')}
+    </div>
+    <div style="background:#1a2e10;border-radius:8px;padding:12px 14px;font-size:13px;color:#4cdd82;line-height:1.6">
+      ✓ Muscle soreness and mild aching around the knee after sessions is normal and expected.<br>
+      ✓ Joint pain is not. When in doubt, rest and contact your physio.
+    </div>`;
+  document.getElementById('feedbackModal').classList.add('open');
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+function exportFeedback() {
+  const data = {
+    exported: new Date().toISOString(),
+    pace_adjustments: state.paceAdj,
+    sessions: Object.values(state.feedback),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `hyrox-feedback-${today()}.json`;
+  a.click();
+}
+
+// ── Close modal on overlay click ──────────────────────────────────────────────
+
+document.getElementById('feedbackModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+render();
+</script>
+</body>
+</html>
