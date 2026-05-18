@@ -66,13 +66,16 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 
 ---
 
-### Wednesday — Strength + Stations (Reactivation)
+### Wednesday — Strength + Stations (Reactivation) 🏠 Home Session
+
+*Equipment: two adjustable DBs (up to 24kg each) + resistance bands. No gym needed this week.*
 
 **Warm-up (8 min)**
-- 400m SkiErg easy (learn the hinge-and-pull pattern — arms drive the machine, not your shoulders)
+- 2 min jumping jacks
+- Band pull-down simulation: anchor one band overhead (door frame, banister), 20 slow double-arm pull-downs — this is the SkiErg pattern. Hinge from hips, arms pull down and back.
 
 **Knee Block — Phase 1 (12 min) ← do this FIRST, before any main lifts**
-*Full detail in `knee-rehab-protocol.md` → Phase 1*
+*Full detail in `knee-rehab-protocol.md` → Phase 1 — all exercises use bands or bodyweight, no change needed*
 
 3 rounds, 45s rest:
 | Exercise | Reps | Key cue |
@@ -85,23 +88,25 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 | Heel Slide | 15 each leg | Slide to comfortable end range — no forcing |
 
 **Block A — Posterior Chain (3 rounds, 60s rest)**
-| Exercise | Sets × Reps | Load |
-|---|---|---|
-| Goblet Squat | 3×12 | 12–16kg KB |
-| Romanian Deadlift | 3×10 | 40–50kg bar |
-| Single-leg Step-up (to 40cm box) | 3×10 each | Bodyweight |
-| Copenhagen Plank | 3×20s each | Bodyweight |
+| Exercise | Sets × Reps | Load | Home notes |
+|---|---|---|---|
+| DB Goblet Squat | 3×12 | 16–20kg (one DB held vertically at chest) | Identical to KB goblet — cup the bell end |
+| DB Romanian Deadlift | 3×10 | 2×16–20kg | Both DBs, hinge at hip, soft knee — same movement as barbell RDL |
+| Step-up (chair/couch/stairs) | 3×10 each leg | Bodyweight → add one 8–10kg DB if easy | Any step ~35–45cm high works |
+| Copenhagen Plank | 3×20s each | Bodyweight | Rest top foot on chair/couch seat |
 
-**Block B — SkiErg + Carry Intro (3 rounds, 90s rest)**
-| Exercise | Detail |
-|---|---|
-| SkiErg | 250m — focus on technique, aim ~1:10/100m |
-| Farmers Carry | 50m @ 2×16kg — walk tall, no lateral lean |
-| Hollow hold | 30s |
+**Block B — Cardio + Core (3 rounds, 90s rest)**
+| Exercise | Detail | Home sub for |
+|---|---|---|
+| Band Ski Pull-down | 2×20 reps — anchor band high, double-arm pull to hips, hinge throughout | SkiErg 250m |
+| DB Farmers Walk | 50m @ 2×20–22kg — walk the length of your space, turn and back | Farmers Carry |
+| Hollow Body Hold | 30s — lower back pressed flat, arms overhead or by sides | Core |
+
+> **Right wrist:** use a wrist strap looped through the DB handle on the right for the farmers walk.
 
 **Station Practice (10 min)**
-- Burpee Broad Jumps: 4 sets of 10 jumps, low intensity, practice landing with soft knees
-- Focus: chest-to-floor → explosive jump → land with control
+- Burpee Broad Jumps: 4 sets × 10 jumps — chest to floor, explosive jump forward, land softly
+- No equipment needed — same as the gym version
 
 **Session total: ~55 min**
 
@@ -128,7 +133,9 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 
 ---
 
-### Saturday — Combined Intro
+### Saturday — Combined Intro 🏠 Home Session
+
+*All three stations can be done without the gym this week.*
 
 **Warm-up (15 min)**
 - Easy 1km jog
@@ -136,13 +143,13 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 - Dynamic drills
 
 **Main (3 rounds, 3 min rest between rounds)**
-> The pattern of Run → Station is the key habit. Don't rush between them.
+> The pattern of Run → Station is the key habit. Move to the station within 30 seconds of finishing each run.
 
-| Round | Run | Station |
-|---|---|---|
-| 1 | 500m @ 5:40/km | SkiErg 300m (easy) |
-| 2 | 500m @ 5:40/km | 12 Burpee Broad Jumps |
-| 3 | 500m @ 5:40/km | Farmers Carry 50m (2×16kg) |
+| Round | Run | Station | Home equipment |
+|---|---|---|---|
+| 1 | 500m @ 5:40/km | Band Ski Pull-down — 3×20 double-arm reps | One band, door frame |
+| 2 | 500m @ 5:40/km | 12 Burpee Broad Jumps | None |
+| 3 | 500m @ 5:40/km | DB Farmers Walk 50m @ 2×20kg | Both DBs |
 
 **Cool-down (10 min)**
 - Easy 500m jog, full stretch
