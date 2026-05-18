@@ -21,6 +21,7 @@ RACE_DATE = datetime(2026, 7, 5)
 PLAN_START = datetime(2026, 5, 19)
 CSV_PATH = Path(__file__).parent / "garmin-activities.csv"
 OUTPUT_PATH = Path(__file__).parent / "weekly-targets.md"
+FEEDBACK_GLOB = "hyrox-feedback-*.json"
 
 # ── Heart rate zone calculation ──────────────────────────────────────────────
 
@@ -408,6 +409,39 @@ def generate_weekly_targets(runs, week_num, max_hr, zones, targets, load):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def load_dashboard_feedback(folder=None):
+    """
+    Load the most recent feedback JSON exported from dashboard.html.
+    Returns dict of {week_num: avg_pace_feel} and {week_num: knee_pain_max}.
+    """
+    folder = Path(folder or Path(__file__).parent)
+    files = sorted(folder.glob(FEEDBACK_GLOB), reverse=True)
+    if not files:
+        return {}, {}
+    with open(files[0]) as f:
+        data = json.load(f)
+    pace_by_week = {}
+    knee_by_week = {}
+    for s in data.get("sessions", []):
+        dk = s.get("date", "")
+        if not dk:
+            continue
+        try:
+            d = datetime.strptime(dk, "%Y-%m-%d")
+        except:
+            continue
+        week = max(1, min(6, (d - datetime(2026, 5, 18)).days // 7 + 1))
+        pf = s.get("pace_feel")
+        kp = s.get("knee_pain")
+        if pf is not None:
+            pace_by_week.setdefault(week, []).append(pf)
+        if kp is not None:
+            knee_by_week.setdefault(week, []).append(kp)
+    avg_pace = {w: sum(v) / len(v) for w, v in pace_by_week.items()}
+    max_knee = {w: max(v) for w, v in knee_by_week.items()}
+    return avg_pace, max_knee
+
+
 def main():
     parser = argparse.ArgumentParser(description="Analyze Garmin data and generate weekly training targets")
     parser.add_argument("--csv", default=str(CSV_PATH), help="Path to Garmin CSV export")
@@ -429,6 +463,27 @@ def main():
     targets = adaptive_targets(recent_runs, week_num, max_hr, zones)
     load = training_load_summary(recent_runs)
 
+    # Load subjective feedback from dashboard exports
+    avg_pace_feel, max_knee_pain = load_dashboard_feedback()
+    pace_adj = 0
+    feedback_note = ""
+    if week_num in avg_pace_feel:
+        avg = avg_pace_feel[week_num]
+        if avg < -1.0:
+            pace_adj = -10
+            feedback_note = f"Dashboard feedback: sessions felt very easy (avg {avg:.1f}). Targets bumped 10s/km faster."
+        elif avg < -0.5:
+            pace_adj = -5
+            feedback_note = f"Dashboard feedback: sessions felt easy (avg {avg:.1f}). Targets bumped 5s/km faster."
+        elif avg > 1.0:
+            pace_adj = 15
+            feedback_note = f"Dashboard feedback: sessions felt very hard (avg {avg:.1f}). Targets eased 15s/km."
+        elif avg > 0.5:
+            pace_adj = 10
+            feedback_note = f"Dashboard feedback: sessions felt hard (avg {avg:.1f}). Targets eased 10s/km."
+    if week_num in max_knee_pain and max_knee_pain[week_num] >= 4:
+        feedback_note += f"\n⚠ Knee pain flag: max score {max_knee_pain[week_num]}/5 this week. Consider contacting your physio."
+
     # ── Print summary to terminal ──
     print("\n" + "=" * 60)
     print(f"  HYROX TRAINING — WEEK {week_num} ANALYSIS")
@@ -447,11 +502,14 @@ def main():
         last = recent_runs[-1]
         print(f"    {last['distance']:.1f}km @ {seconds_to_pace(last['avg_pace_sec'])}/km, HR {last['avg_hr']}")
 
-    print(f"\n  Week {week_num} pace targets:")
-    print(f"    Easy:       {seconds_to_pace(targets['easy'])}/km  (Z2: {targets['z2_range'][0]}–{targets['z2_range'][1]} bpm)")
-    print(f"    Tempo:      {seconds_to_pace(targets['tempo'])}/km")
-    print(f"    Intervals:  {seconds_to_pace(targets['intervals'])}/km")
+    def adj_pace(secs): return seconds_to_pace(secs + pace_adj) if secs else "–"
+    print(f"\n  Week {week_num} pace targets (feedback adj: {pace_adj:+d}s):")
+    print(f"    Easy:       {adj_pace(targets['easy'])}/km  (Z2: {targets['z2_range'][0]}–{targets['z2_range'][1]} bpm)")
+    print(f"    Tempo:      {adj_pace(targets['tempo'])}/km")
+    print(f"    Intervals:  {adj_pace(targets['intervals'])}/km")
     print(f"    Race goal:  {seconds_to_pace(targets['race_target'])}/km")
+    if feedback_note:
+        print(f"\n  Note: {feedback_note}")
 
     print(f"\n  Generating {OUTPUT_PATH.name}...")
 
