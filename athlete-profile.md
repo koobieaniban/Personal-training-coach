@@ -5,8 +5,10 @@
 | Category | Open Male |
 | Body weight | ~75kg |
 | Injury | Post-op meniscus tear (right/left knee) — fully cleared |
-| Current fitness | Light training: walking, cycling, some upper body |
-| Current 5k | 28:30 (5:42/km avg) |
+| Resting HR | 45–50 bpm (athlete baseline) |
+| Current fitness | Post-surgery return: 5km run May 16 @ 5:55/km, HR 149 |
+| Pre-surgery peak (Oct–Nov 2025) | 5:16/km for 5km (HR 149); 5:27/km @ HR 142 (Z2) |
+| Surgery | Meniscus op approx. Dec 2025–Jan 2026; rehab walks Feb 2026 |
 | Target Hyrox run pace | 5:30/km per 1km segment |
 | Training days | Monday / Wednesday / Friday / Saturday |
 | Equipment | Full commercial gym (SkiErg, sled, rower, wall balls, KBs, BBs) |
@@ -32,10 +34,14 @@ Approximate total race time target: **75–90 min**
 
 ## Pace Reference
 
-| Zone | Purpose | Target pace |
-|---|---|---|
-| Z2 Easy | Aerobic base, recovery runs | 6:00–6:30/km |
-| Tempo | Lactate threshold | 5:15–5:25/km |
-| Race pace | Hyrox 1km segments | 5:30/km |
-| Interval | Speed development | 4:55–5:10/km |
-| Strides | Neuromuscular activation | ~4:30/km × 100m |
+*HR zones based on max HR 188 bpm, resting HR 47 bpm (Karvonen method)*
+
+| Zone | HR range | Purpose | Week 1 pace equiv. |
+|---|---|---|---|
+| Z1 Recovery | 117–132 bpm | Active recovery | >7:00/km |
+| Z2 Aerobic base | 132–146 bpm | Easy runs, aerobic adaptation | 6:15–6:30/km |
+| Z3 Aerobic thresh | 146–160 bpm | Tempo work | 5:45–6:10/km |
+| Z4 Threshold | 160–174 bpm | Intervals, race effort | 5:16–5:44/km |
+| Z5 VO2max | 174–188 bpm | Strides, max efforts | <5:16/km |
+
+*Run `python3 analyze_garmin.py` each week — pace equivalents adjust automatically as fitness returns.*

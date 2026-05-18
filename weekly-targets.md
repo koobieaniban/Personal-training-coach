@@ -1,5 +1,10 @@
-# Week 1 Training Targets
-*Generated: 2026-05-18 12:22 | Race in 47 days*
+# Week 6 Training Targets
+*Generated: 2026-05-18 12:25 | Race in 47 days*
+
+## Fitness snapshot
+- **Pre-surgery peak pace (Aug–Nov 2025):** 5:16/km
+- **Current post-surgery pace (May 2026):** 5:55/km
+- **Race goal:** 5:30/km — gap to close: 25s/km
 
 ## Fitness trend
 Not enough recent data to calculate trend.
@@ -8,46 +13,46 @@ Not enough recent data to calculate trend.
 
 | Session type | Target pace | HR guide |
 |---|---|---|
-| Easy / Z2 runs | 7:00/km | 135–148 bpm |
-| Tempo | 6:22/km | 161–175 bpm |
-| 1km intervals | 5:44/km | Max effort for duration |
+| Easy / Z2 runs | 6:00/km | 132–146 bpm |
+| Tempo | 5:45/km | 160–174 bpm |
+| 1km intervals | 5:30/km | Max effort for duration |
 | Race pace target | 5:30/km | Hold across all 8 runs |
 
 ## Volume prescription
 
 | Metric | Target |
 |---|---|
-| Total run volume | 15 km |
+| Total run volume | 10 km |
 | Longest single run | 4 km |
-| 1km interval reps | 4 |
+| 1km interval reps | 3 |
 
 ## Recent training load (last 4 weeks)
 
 | Metric | Value |
 |---|---|
-| Total km logged | 0.0 km |
-| Sessions | 0 |
-| Weekly average | 0.0 km |
+| Total km logged | 5.5 km |
+| Sessions | 2 |
+| Weekly average | 1.4 km |
 
 ## This week's sessions
 
 ### Monday — Run A (Intervals)
-- Warm-up: 10 min easy @ 7:00/km
-- Main: 4 × 1km @ **5:44/km** | rest 90s (W1–2) or 60s (W3+)
+- Warm-up: 10 min easy @ 6:00/km
+- Main: 3 × 1km @ **5:30/km** | rest 90s (W1–2) or 60s (W3+)
 - Cool-down: 1km easy jog
 
 ### Wednesday — Strength + Stations
 - See training-plan.md for this week's strength block and station prescription
-- SkiErg HR guide: keep below 175 bpm on station reps
+- SkiErg HR guide: keep below 174 bpm on station reps
 
 ### Friday — Run B (Easy aerobic)
-- 4km continuous @ 7:00/km
-- HR should stay between 135–148 bpm the entire run
+- 3km continuous @ 6:00/km
+- HR should stay between 132–146 bpm the entire run
 - Finish with 4 × 100m strides
 
 ### Saturday — Simulation
-- Refer to training-plan.md Week 1 Saturday session
-- Run pace target during simulation: 5:44/km
+- Refer to training-plan.md Week 6 Saturday session
+- Run pace target during simulation: 5:30/km
 
 ---
 

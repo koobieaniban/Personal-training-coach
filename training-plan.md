@@ -48,10 +48,12 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 - Dynamic drills: leg swings (front/back, lateral) × 10 each, hip circles × 10, A-skips × 2×20m, butt kicks × 2×20m
 
 **Main (30 min)**
-- 3km easy run @ **6:15–6:45/km** — this is deliberately conservative for Week 1. Your last recorded run was July 2023 (22 months ago); starting slower is smarter than starting injured.
-- HR guide: keep between 139–153 bpm throughout. If HR climbs above 153, slow down or walk.
-- Immediately follow with 4 × 100m strides @ ~5:00/km — walk back full recovery
+- 3km easy run @ **6:15–6:30/km** — you ran 5:55/km on May 16 as your first post-surgery run; this is intentionally 30s slower to keep HR in Z2.
+- HR guide: keep between **132–146 bpm** throughout. If HR climbs above 146, slow down or walk. Do not chase pace.
+- Finish with: 4 × 100m strides @ ~5:00/km — walk back full recovery
 - *Stop if any sharp knee pain. Mild ache is OK; sharp is not.*
+
+> **Note:** Week 1 has no dedicated interval session. Monday is pure aerobic reintroduction. Intervals begin Week 2.
 
 **Cool-down (5 min)**
 - Walk 3 min
@@ -95,9 +97,9 @@ This plan is built on research-backed principles from PRVN Fitness (James Kelly,
 - 5 min walk + same dynamic drills as Monday
 
 **Main (30–35 min)**
-- 4km continuous easy run @ **6:15–6:30/km**, HR 139–153 bpm
-- If knee feels good and HR stayed low, add: 4 × 200m @ 5:40/km with 90s walking rest
-- Do not chase pace this week. Use HR as the governor, not your legs' feelings.
+- 4km continuous easy run @ **6:15–6:25/km**, HR **132–146 bpm**
+- If knee feels good and HR stayed comfortably in Z2, add: 4 × 200m @ 5:20/km with 90s walking rest
+- Use HR as the governor this week — your legs will want to go faster than the data says is wise.
 
 **Cool-down (10 min)**
 - Hip flexor lunge stretch 90s/side

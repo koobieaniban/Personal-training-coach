@@ -210,34 +210,84 @@ def fitness_trend(runs):
 
 # ── Adaptive pace targets ─────────────────────────────────────────────────────
 
+def pre_surgery_peak_pace(runs):
+    """
+    Best aerobic pace from the 8-week block before surgery (Aug–Nov 2025).
+    This is the 'return to' target, not a new peak to chase.
+    """
+    peak_window = [
+        r for r in runs
+        if datetime(2025, 8, 1) <= r["date"] <= datetime(2025, 11, 30)
+        and r["distance"] >= 4.5
+        and r["avg_pace_sec"]
+        and r["avg_hr"]
+    ]
+    if not peak_window:
+        return None
+    # Best pace in this window
+    peak_window.sort(key=lambda x: x["avg_pace_sec"])
+    return peak_window[0]["avg_pace_sec"]
+
+
+def post_surgery_current_pace(runs):
+    """
+    Most recent real running efforts (>=3km, normal pace) post-Feb 2026 surgery.
+    Excludes the slow rehab walks (<= 15 min/km).
+    """
+    post_surg = [
+        r for r in runs
+        if r["date"] >= datetime(2026, 3, 1)
+        and r["distance"] >= 3.0
+        and r["avg_pace_sec"]
+        and r["avg_pace_sec"] < 600  # exclude rehab walks (>10 min/km)
+    ]
+    if not post_surg:
+        return None
+    post_surg.sort(key=lambda x: x["date"], reverse=True)
+    # weighted average of most recent 3
+    recent = post_surg[:3]
+    return round(sum(r["avg_pace_sec"] for r in recent) / len(recent))
+
+
 def adaptive_targets(runs, week_num, max_hr, zones):
     """
     Generate this week's pace targets based on actual training data.
-    Falls back to conservative defaults if data is sparse.
+    Key insight: athlete is returning to pre-surgery form, not building from scratch.
     """
     z2_lo, z2_hi = zones["Z2 Aerobic base"]
     z4_lo, z4_hi = zones["Z4 Threshold"]
 
     z2_pace = aerobic_pace_from_hr(runs, (z2_lo, z2_hi))
-    effort_pace = estimated_5k_pace(runs)
+    current_pace = post_surgery_current_pace(runs)
+    peak_pace = pre_surgery_peak_pace(runs)
 
-    # Conservative defaults if no recent data
-    if not z2_pace:
-        z2_pace = 420  # 7:00/km — safe default for detraining + post-surgery
-    if not effort_pace:
-        effort_pace = 344  # 5:44/km — last known race-ish pace
+    race_target = 330  # 5:30/km
 
-    # Gradual pace progression target: close 12s/km gap to 5:30 over 5 weeks
-    race_target = 330  # 5:30/km in seconds
-    current_gap = effort_pace - race_target
-    week_increment = current_gap / 5
-    weekly_interval_target = round(effort_pace - (week_increment * (week_num - 1)))
+    # Current effort pace: use post-surgery data, or fall back to last known
+    effort_pace = current_pace or estimated_5k_pace(runs) or 355  # 5:55/km default
+
+    # Peak pace: how fast they were before surgery
+    peak = peak_pace or race_target
+
+    # Recovery arc: weeks 1-3 close gap from current → peak, weeks 4-5 push to race target
+    if week_num <= 3:
+        gap = effort_pace - peak
+        weekly_step = gap / 3 if gap > 0 else 0
+        weekly_interval_target = round(effort_pace - (weekly_step * (week_num - 1)))
+    else:
+        gap = peak - race_target
+        weekly_step = gap / 2 if gap > 0 else 0
+        weekly_interval_target = round(peak - (weekly_step * (week_num - 3)))
+
     weekly_interval_target = max(weekly_interval_target, race_target)
 
-    # Easy runs: always based on Z2, with a cap
-    easy_pace = max(z2_pace, 360)  # never faster than 6:00/km for easy
+    # Easy pace: Z2-based, but cap at no faster than 30s above interval target
+    if z2_pace:
+        easy_pace = max(z2_pace, weekly_interval_target + 30)
+    else:
+        easy_pace = max(weekly_interval_target + 40, 355)  # at least 40s slower than intervals
 
-    # Tempo: midpoint between easy and interval
+    # Tempo: threshold — 15-20s faster than easy, 10-15s slower than intervals
     tempo_pace = round((easy_pace + weekly_interval_target) / 2)
 
     return {
@@ -246,6 +296,8 @@ def adaptive_targets(runs, week_num, max_hr, zones):
         "tempo": tempo_pace,
         "intervals": weekly_interval_target,
         "race_target": race_target,
+        "current_pace": effort_pace,
+        "peak_pace": peak,
         "z2_range": (z2_lo, z2_hi),
         "z4_range": (z4_lo, z4_hi),
     }
@@ -282,9 +334,17 @@ def generate_weekly_targets(runs, week_num, max_hr, zones, targets, load):
 
     z2_lo, z2_hi = targets["z2_range"]
 
+    peak_str = seconds_to_pace(targets.get('peak_pace'))
+    current_str = seconds_to_pace(targets.get('current_pace'))
+
     lines = [
         f"# Week {week_num} Training Targets",
         f"*Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Race in {(RACE_DATE - datetime.now()).days} days*",
+        "",
+        "## Fitness snapshot",
+        f"- **Pre-surgery peak pace (Aug–Nov 2025):** {peak_str}/km",
+        f"- **Current post-surgery pace (May 2026):** {current_str}/km",
+        f"- **Race goal:** 5:30/km — gap to close: {(targets.get('current_pace', 330) - 330)}s/km",
         "",
         "## Fitness trend",
         trend_str,
@@ -352,7 +412,7 @@ def main():
     parser = argparse.ArgumentParser(description="Analyze Garmin data and generate weekly training targets")
     parser.add_argument("--csv", default=str(CSV_PATH), help="Path to Garmin CSV export")
     parser.add_argument("--week", type=int, default=None, help="Override week number (1–6)")
-    parser.add_argument("--resting-hr", type=int, default=55, help="Your resting heart rate")
+    parser.add_argument("--resting-hr", type=int, default=47, help="Your resting heart rate")
     args = parser.parse_args()
 
     csv_file = Path(args.csv)
