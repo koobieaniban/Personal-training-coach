@@ -1,5 +1,5 @@
-# Week 6 Training Targets
-*Generated: 2026-05-18 12:25 | Race in 47 days*
+# Week 1 Training Targets
+*Generated: 2026-05-18 12:43 | Race in 47 days*
 
 ## Fitness snapshot
 - **Pre-surgery peak pace (Aug–Nov 2025):** 5:16/km
@@ -13,18 +13,18 @@ Not enough recent data to calculate trend.
 
 | Session type | Target pace | HR guide |
 |---|---|---|
-| Easy / Z2 runs | 6:00/km | 132–146 bpm |
-| Tempo | 5:45/km | 160–174 bpm |
-| 1km intervals | 5:30/km | Max effort for duration |
+| Easy / Z2 runs | 6:25/km | 132–146 bpm |
+| Tempo | 6:10/km | 160–174 bpm |
+| 1km intervals | 5:55/km | Max effort for duration |
 | Race pace target | 5:30/km | Hold across all 8 runs |
 
 ## Volume prescription
 
 | Metric | Target |
 |---|---|
-| Total run volume | 10 km |
+| Total run volume | 15 km |
 | Longest single run | 4 km |
-| 1km interval reps | 3 |
+| 1km interval reps | 4 |
 
 ## Recent training load (last 4 weeks)
 
@@ -37,8 +37,8 @@ Not enough recent data to calculate trend.
 ## This week's sessions
 
 ### Monday — Run A (Intervals)
-- Warm-up: 10 min easy @ 6:00/km
-- Main: 3 × 1km @ **5:30/km** | rest 90s (W1–2) or 60s (W3+)
+- Warm-up: 10 min easy @ 6:25/km
+- Main: 4 × 1km @ **5:55/km** | rest 90s (W1–2) or 60s (W3+)
 - Cool-down: 1km easy jog
 
 ### Wednesday — Strength + Stations
@@ -46,13 +46,13 @@ Not enough recent data to calculate trend.
 - SkiErg HR guide: keep below 174 bpm on station reps
 
 ### Friday — Run B (Easy aerobic)
-- 3km continuous @ 6:00/km
+- 4km continuous @ 6:25/km
 - HR should stay between 132–146 bpm the entire run
 - Finish with 4 × 100m strides
 
 ### Saturday — Simulation
-- Refer to training-plan.md Week 6 Saturday session
-- Run pace target during simulation: 5:30/km
+- Refer to training-plan.md Week 1 Saturday session
+- Run pace target during simulation: 5:55/km
 
 ---
 
