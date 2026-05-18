@@ -36,10 +36,12 @@
   /* ── Week strip ── */
   .week-strip { display: flex; gap: 6px; padding: 12px 16px; overflow-x: auto; scrollbar-width: none; }
   .week-strip::-webkit-scrollbar { display: none; }
-  .day-chip { flex-shrink: 0; width: 52px; border-radius: 10px; padding: 8px 4px; text-align: center; cursor: pointer; border: 1.5px solid var(--border); background: var(--card); transition: all .15s; }
-  .day-chip .chip-label { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
-  .day-chip .chip-date { font-size: 14px; font-weight: 700; }
-  .day-chip .chip-icon { font-size: 16px; margin-top: 3px; }
+  .week-divider { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 2px; }
+  .week-divider span { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; writing-mode: vertical-rl; }
+  .day-chip { flex-shrink: 0; width: 48px; border-radius: 10px; padding: 8px 4px; text-align: center; cursor: pointer; border: 1.5px solid var(--border); background: var(--card); transition: all .15s; }
+  .day-chip .chip-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+  .day-chip .chip-date { font-size: 13px; font-weight: 700; }
+  .day-chip .chip-icon { font-size: 15px; margin-top: 3px; }
   .day-chip.active { border-color: var(--accent); background: #1e2510; }
   .day-chip.today { border-color: var(--accent2); }
   .day-chip.done { border-color: var(--done); background: #0d2018; }
@@ -144,8 +146,15 @@
   .rest-card h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
   .rest-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
 
+  /* ── Wrist alert ── */
+  .wrist-alert { margin: 0 16px 12px; background: #1e1510; border: 1px solid #5a3a10; border-radius: 10px; padding: 11px 14px; display: flex; gap: 10px; align-items: flex-start; }
+  .wrist-alert .wa-icon { font-size: 18px; flex-shrink: 0; }
+  .wrist-alert .wa-text { font-size: 13px; line-height: 1.5; color: #ffcc80; }
+  .wrist-alert .wa-text strong { color: #ffb347; }
+
   /* ── Knee red flag ── */
   .red-flag-btn { margin: 0 16px 12px; width: calc(100% - 32px); background: transparent; border: 1.5px solid var(--red-flag); color: var(--red-flag); border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .wrist-btn { margin: 0 16px 12px; width: calc(100% - 32px); background: transparent; border: 1.5px solid #5a3a10; color: #ffb347; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
 
   /* ── Export ── */
   .export-btn { margin: 0 16px; width: calc(100% - 32px); background: var(--card2); border: 1px solid var(--border); color: var(--muted); border-radius: 10px; padding: 10px; font-size: 13px; cursor: pointer; }
@@ -165,11 +174,14 @@
   <div class="week-strip" id="weekStrip"></div>
   <div class="pace-bar" id="paceBar"></div>
   <div id="adjNotice"></div>
+  <div id="wristAlert"></div>
   <div id="statsCard"></div>
   <div id="sessionArea"></div>
 
   <div style="height:8px"></div>
   <button class="red-flag-btn" onclick="showRedFlags()">⚠ Knee red flags — know when to stop</button>
+  <div style="height:8px"></div>
+  <button class="wrist-btn" onclick="showWristMods()">🤚 De Quervain's wrist modifications</button>
   <div style="height:8px"></div>
   <button class="export-btn" onclick="exportFeedback()">↓ Export feedback JSON (for analyze_garmin.py)</button>
 </div>
@@ -495,6 +507,39 @@ const SESSIONS = {
   },
 };
 
+// ── De Quervain's wrist modifications per session type ───────────────────────
+// Right wrist only. These are injected as a notice on any session with grip load.
+
+const WRIST_MODS = {
+  skierg:   { label: 'SkiErg', mod: 'Loop the straps around your wrists rather than gripping the handles. Open-palm or hook grip only — no thumb wrap. Keep wrist neutral throughout the pull.' },
+  sled_pull:{ label: 'Sled Pull', mod: 'Feed the rope through a wrist loop or lasso it around your right forearm rather than gripping. Use an overhand hook — not a pinch grip. Left hand pulls harder to compensate.' },
+  sled_push:{ label: 'Sled Push', mod: 'Push through the heel of your palm, not fingers. Keep wrist locked in neutral extension. This should be low pain — stop if it isn\'t.' },
+  burpee:   { label: 'Burpee Broad Jumps', mod: 'Use push-up handles if available (takes wrist out of extension). Otherwise use fist position on the floor with right hand to keep wrist neutral. Land and push off left-dominant.' },
+  row:      { label: 'Rowing', mod: 'Use a rowing strap on the right hand. Hook grip, not full grip. Keep wrist flat — don\'t let it curl at the finish. Straps are allowed in training and race.' },
+  farmers:  { label: 'Farmers Carry', mod: 'Use a lifting strap on the right hand — loop it through the KB handle so the load is on your forearm, not your grip. This is the highest-risk station. If strap unavailable, carry left-hand normal, right-hand racked (KB on forearm).' },
+  lunges:   { label: 'Sandbag Lunges', mod: 'Use a front-rack cross-arm position: forearms crossed, sandbag resting on forearms and upper chest, hands NOT gripping the bag. Zero wrist load.' },
+  wallball: { label: 'Wall Balls', mod: 'Catch with forearms/palms, not fingers — like a volleyball bump. Keep thumb away from ball contact. Use wrist guard/KT tape during training. This is the trickiest station for De Quervain\'s — practise the catch technique.' },
+  rdl:      { label: 'Romanian Deadlift', mod: 'Use a lifting strap on the right hand. No mixed grip. Keep wrist neutral throughout.' },
+  goblet:   { label: 'Goblet Squat / KB work', mod: 'Hold KB with palms cupped under the bell, NOT with fingers/thumb wrap. Or substitute barbell front squat with wrist wraps.' },
+  db:       { label: 'Dumbbell work', mod: 'Use a neutral (hammer) grip where possible on the right. Avoid supinated grip under load. Use wrist wrap for support.' },
+};
+
+// Map session dates → relevant wrist mods
+const SESSION_WRIST_MODS = {
+  // Strength sessions - lifting straps + grip notes
+  '2026-05-21': ['skierg','rdl','goblet'],
+  '2026-05-24': ['skierg','farmers','burpee'],
+  '2026-05-28': ['skierg','rdl','goblet','sled_push','sled_pull','wallball','farmers'],
+  '2026-05-31': ['row','sled_push','skierg','wallball'],
+  '2026-06-04': ['skierg','rdl','goblet','sled_push','sled_pull','burpee'],
+  '2026-06-07': ['skierg','sled_push','sled_pull','burpee','row','farmers'],
+  '2026-06-11': ['skierg','rdl','goblet','sled_push','sled_pull','burpee','row','farmers','lunges','wallball'],
+  '2026-06-14': ['skierg','sled_push','sled_pull','burpee','row','farmers','lunges','wallball'],
+  '2026-06-18': ['skierg','rdl','sled_push','sled_pull','wallball','farmers'],
+  '2026-06-21': ['skierg','sled_push','burpee','row','farmers','wallball'],
+  '2026-06-25': ['skierg','wallball','farmers'],
+};
+
 // ── State management ──────────────────────────────────────────────────────────
 
 function loadState() {
@@ -576,7 +621,42 @@ function render() {
   renderWeekStrip();
   renderPaceBar();
   renderAdjNotice();
+  renderWristAlert();
   renderSession();
+}
+
+function renderWristAlert() {
+  const el = document.getElementById('wristAlert');
+  const mods = SESSION_WRIST_MODS[viewDate];
+  if (!mods || !mods.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="wrist-alert">
+    <div class="wa-icon">🤚</div>
+    <div class="wa-text"><strong>De Quervain's — right wrist mods today:</strong> ${mods.map(k => WRIST_MODS[k]?.label).join(' · ')}. Tap the wrist button below for full details.</div>
+  </div>`;
+}
+
+function showWristMods() {
+  const mods = SESSION_WRIST_MODS[viewDate];
+  document.getElementById('modalTitle').textContent = '🤚 De Quervain\'s Modifications';
+  document.getElementById('modalSub').textContent = 'Right wrist only — applies to today\'s session';
+
+  const items = mods && mods.length
+    ? mods.map(k => WRIST_MODS[k]).filter(Boolean)
+    : Object.values(WRIST_MODS);
+
+  document.getElementById('modalBody').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+      ${items.map(m => `
+        <div style="padding:12px;background:#1e1510;border-radius:8px;border:1px solid #5a3a10">
+          <div style="font-weight:700;color:#ffb347;margin-bottom:5px;font-size:13px">${m.label}</div>
+          <div style="font-size:13px;color:#ffcc80;line-height:1.55">${m.mod}</div>
+        </div>`).join('')}
+    </div>
+    <div style="background:#1a1a2e;border-radius:8px;padding:12px 14px;font-size:13px;color:#8bb8ff;line-height:1.6">
+      💡 <strong>Race day:</strong> Wrist straps and guards are permitted in Hyrox Open. Tape with KT tape or rigid sports tape before the race. Inform officials at check-in.<br><br>
+      💡 <strong>Between sessions:</strong> Ice 10–15 min after any grip-heavy session. Wear a splint at night. NSAIDs if prescribed by your physio.
+    </div>`;
+  document.getElementById('feedbackModal').classList.add('open');
 }
 
 function renderHeader() {
@@ -589,38 +669,54 @@ function renderHeader() {
 }
 
 function renderWeekStrip() {
-  const week = getWeekNum(viewDate);
-  const weekStart = new Date(PLAN_START.getTime() + (week - 1) * 7 * 86400000);
+  // Always show the two-week window that contains today
+  const todayWeek = getWeekNum(today());
+  const firstWeek = Math.min(todayWeek, 5); // don't start on week 6
   const strip = document.getElementById('weekStrip');
   strip.innerHTML = '';
+  const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart.getTime() + i * 86400000);
-    const dk = dateKey(d);
-    const s = SESSIONS[dk];
-    const isToday = dk === today();
-    const isView = dk === viewDate;
-    const comp = state.completions[dk];
+  for (let w = firstWeek; w <= firstWeek + 1; w++) {
+    if (w > 6) break;
+    const weekStart = new Date(PLAN_START.getTime() + (w - 1) * 7 * 86400000);
+    const weekLabel = w === todayWeek ? 'This week' : w === todayWeek + 1 ? 'Next week' : `Week ${w}`;
 
-    let icon = '–';
-    let cls = 'rest';
-    if (s && !s.rest) {
-      icon = s.icon;
-      cls = s.type;
-      if (comp === 'done')    cls += ' done';
-      else if (comp === 'skipped') cls += ' skipped';
+    // Week label divider
+    strip.innerHTML += `<div class="week-divider"><span>${weekLabel}</span></div>`;
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart.getTime() + i * 86400000);
+      const dk = dateKey(d);
+      const s = SESSIONS[dk];
+      const isToday = dk === today();
+      const isView = dk === viewDate;
+      const comp = state.completions[dk];
+
+      let icon = '–';
+      let cls = 'rest';
+      if (s && !s.rest) {
+        icon = s.icon;
+        cls = s.type;
+        if (comp === 'done')    cls += ' done';
+        else if (comp === 'skipped') cls += ' skipped';
+      }
+      if (isView)  cls += ' active';
+      if (isToday) cls += ' today';
+
+      strip.innerHTML += `
+        <div class="day-chip ${cls}" onclick="viewDate='${dk}';render()">
+          <div class="chip-label">${dayLabels[i]}</div>
+          <div class="chip-date">${d.getDate()}</div>
+          <div class="chip-icon">${comp === 'done' ? '✓' : comp === 'skipped' ? '✗' : icon}</div>
+        </div>`;
     }
-    if (isView)  cls += ' active';
-    if (isToday) cls += ' today';
-
-    const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    strip.innerHTML += `
-      <div class="day-chip ${cls}" onclick="viewDate='${dk}';render()">
-        <div class="chip-label">${labels[i]}</div>
-        <div class="chip-date">${d.getDate()}</div>
-        <div class="chip-icon">${comp === 'done' ? '✓' : comp === 'skipped' ? '✗' : icon}</div>
-      </div>`;
   }
+
+  // Scroll so today is visible
+  requestAnimationFrame(() => {
+    const active = strip.querySelector('.today, .active');
+    if (active) active.scrollIntoView({ inline: 'center', behavior: 'smooth', block: 'nearest' });
+  });
 }
 
 function renderPaceBar() {
