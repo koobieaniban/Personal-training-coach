@@ -158,6 +158,36 @@
 
   /* ── Export ── */
   .export-btn { margin: 0 16px; width: calc(100% - 32px); background: var(--card2); border: 1px solid var(--border); color: var(--muted); border-radius: 10px; padding: 10px; font-size: 13px; cursor: pointer; }
+
+  /* ── Workout analysis ── */
+  .upload-zone { margin: 8px 16px 0; }
+  .upload-btn { display: block; width: 100%; background: #0d1520; border: 1.5px dashed var(--accent2); color: var(--accent2); border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 700; cursor: pointer; text-align: center; transition: all .15s; }
+  .upload-btn:hover { background: #131d2e; border-color: #7aa5ff; }
+  .analysis-card { margin: 12px 16px 0; background: var(--card); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
+  .analysis-header { padding: 12px 16px; background: #0d1520; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .analysis-header h4 { font-size: 14px; font-weight: 700; flex: 1; }
+  .analysis-header .a-date { font-size: 11px; color: var(--muted); }
+  .analysis-body { padding: 14px 16px; }
+  .analysis-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .metric-box { background: var(--card2); border-radius: 8px; padding: 8px 10px; text-align: center; }
+  .metric-box .m-val { font-size: 18px; font-weight: 800; color: var(--accent); }
+  .metric-box .m-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .metric-box.warning .m-val { color: #ffb347; }
+  .metric-box.good .m-val { color: var(--done); }
+  .lap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; margin-bottom: 14px; }
+  .lap-item { background: var(--card2); border-radius: 8px; padding: 8px 6px; text-align: center; border: 1px solid var(--border); }
+  .lap-item .lap-num { font-size: 10px; color: var(--muted); }
+  .lap-item .lap-pace { font-size: 14px; font-weight: 700; }
+  .lap-item .lap-hr { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .lap-item.fast { border-color: var(--done); }
+  .lap-item.slow { border-color: #ffb347; }
+  .insight-section { margin-bottom: 10px; }
+  .insight-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+  .insight-title.wins { color: var(--done); }
+  .insight-title.watch { color: #ffb347; }
+  .insight-title.adjust { color: var(--accent2); }
+  .insight-item { font-size: 13px; line-height: 1.5; padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .insight-item:last-child { border-bottom: none; }
 </style>
 </head>
 <body>
@@ -177,6 +207,7 @@
   <div id="wristAlert"></div>
   <div id="statsCard"></div>
   <div id="sessionArea"></div>
+  <div id="analysisArea"></div>
 
   <div style="height:8px"></div>
   <button class="red-flag-btn" onclick="showRedFlags()">⚠ Knee red flags — know when to stop</button>
@@ -550,9 +581,10 @@ function saveState(s) { localStorage.setItem('hyrox_state', JSON.stringify(s)); 
 
 let state = loadState();
 // state = { completions: {dateStr: 'done'|'skipped'}, feedback: {dateStr: {...}}, paceAdj: {week: seconds} }
-if (!state.completions) state.completions = {};
-if (!state.feedback)    state.feedback    = {};
-if (!state.paceAdj)     state.paceAdj     = {};
+if (!state.completions)  state.completions  = {};
+if (!state.feedback)     state.feedback     = {};
+if (!state.paceAdj)      state.paceAdj      = {};
+if (!state.workoutData)  state.workoutData  = {};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -624,6 +656,7 @@ function render() {
   renderAdjNotice();
   renderWristAlert();
   renderSession();
+  renderAnalysisCard();
 }
 
 function renderWristAlert() {
@@ -992,6 +1025,259 @@ function showRedFlags() {
       ✓ Joint pain is not. When in doubt, rest and contact your physio.
     </div>`;
   document.getElementById('feedbackModal').classList.add('open');
+}
+
+// ── Garmin workout file parsing ───────────────────────────────────────────────
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const phi1 = lat1 * Math.PI / 180, phi2 = lat2 * Math.PI / 180;
+  const dphi = (lat2 - lat1) * Math.PI / 180;
+  const dlam = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dphi/2)**2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dlam/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function parseTCX(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const laps = [];
+  doc.querySelectorAll('Lap').forEach(lap => {
+    const secs   = parseFloat(lap.querySelector('TotalTimeSeconds')?.textContent || 0);
+    const distM  = parseFloat(lap.querySelector('DistanceMeters')?.textContent || 0);
+    const avgHR  = parseInt(lap.querySelector('AverageHeartRateBpm Value')?.textContent || 0);
+    const maxHR  = parseInt(lap.querySelector('MaximumHeartRateBpm Value')?.textContent || 0);
+    if (distM > 50 && secs > 0) {
+      laps.push({ distM, totalTimeSec: secs, paceSecPerKm: (secs / distM) * 1000, avgHR, maxHR });
+    }
+  });
+  return laps.length ? laps : null;
+}
+
+function parseGPX(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const pts = doc.querySelectorAll('trkpt');
+  if (pts.length < 2) return null;
+
+  const points = [];
+  pts.forEach(pt => {
+    const lat = parseFloat(pt.getAttribute('lat'));
+    const lon = parseFloat(pt.getAttribute('lon'));
+    const timeStr = pt.querySelector('time')?.textContent;
+    // HR can live in extensions under gpxtpx:hr or ns3:hr
+    const hrEl = pt.querySelector('hr') || pt.querySelector('HeartRateBpm Value');
+    const hr = parseInt(hrEl?.textContent || 0);
+    if (!isNaN(lat) && !isNaN(lon) && timeStr) {
+      points.push({ lat, lon, time: new Date(timeStr), hr });
+    }
+  });
+  if (points.length < 2) return null;
+
+  const laps = [];
+  let lapDist = 0, lapStart = 0, lapHRs = [];
+  for (let i = 1; i < points.length; i++) {
+    const d = haversine(points[i-1].lat, points[i-1].lon, points[i].lat, points[i].lon);
+    lapDist += d;
+    if (points[i].hr > 0) lapHRs.push(points[i].hr);
+    if (lapDist >= 1000 || i === points.length - 1) {
+      const secs = (points[i].time - points[lapStart].time) / 1000;
+      const avgHR = lapHRs.length ? Math.round(lapHRs.reduce((a,b) => a+b) / lapHRs.length) : 0;
+      laps.push({ distM: lapDist, totalTimeSec: secs, paceSecPerKm: (secs / lapDist) * 1000, avgHR, maxHR: Math.max(0, ...lapHRs) });
+      lapDist = 0; lapStart = i; lapHRs = [];
+    }
+  }
+  return laps.length ? laps : null;
+}
+
+function secToPace(s) {
+  if (!s || s <= 0) return '–';
+  return `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
+}
+
+function analyzeWorkout(laps, dk) {
+  if (!laps || !laps.length) return null;
+  const session  = SESSIONS[dk];
+  const week     = session?.week || getWeekNum(dk);
+  const totalDist = laps.reduce((a, l) => a + l.distM, 0);
+  const totalTime = laps.reduce((a, l) => a + l.totalTimeSec, 0);
+  const avgPaceSec = totalDist > 0 ? (totalTime / totalDist) * 1000 : 0;
+  const hrList = laps.filter(l => l.avgHR > 0).map(l => l.avgHR);
+  const avgHR  = hrList.length ? Math.round(hrList.reduce((a,b) => a+b) / hrList.length) : 0;
+
+  const wins = [], watch = [], adjustments = [];
+
+  // ── Pace vs plan ──
+  const paceRef = session?.paceRef || 'easy';
+  const planned = adjustedPace(week, paceRef);
+  const [pm, ps] = planned.split(':').map(Number);
+  const plannedSec = pm * 60 + ps;
+
+  if (plannedSec > 0 && avgPaceSec > 0) {
+    const diff = Math.round(avgPaceSec - plannedSec);
+    if (Math.abs(diff) <= 15) {
+      wins.push(`Pace bang on target: ${secToPace(avgPaceSec)}/km vs planned ${planned}/km.`);
+    } else if (diff < -30) {
+      watch.push(`Ran ${Math.abs(diff)}s/km faster than planned (${secToPace(avgPaceSec)}/km). Check HR data — don't burn aerobic matches this early.`);
+      adjustments.push(`Next easy run: hold back ${Math.round(Math.abs(diff)/2)}s/km for the first 2 km, then settle.`);
+    } else if (diff < -15) {
+      watch.push(`Slightly faster than target (${secToPace(avgPaceSec)}/km vs ${planned}/km). Fine if HR stayed in Z2.`);
+    } else if (diff > 30) {
+      watch.push(`Ran ${diff}s/km slower than target (${secToPace(avgPaceSec)}/km). Normal in early weeks — aerobic base is building.`);
+    } else {
+      wins.push(`Great pacing restraint: ${secToPace(avgPaceSec)}/km. Building the base correctly.`);
+    }
+  }
+
+  // ── HR zones ──
+  if (avgHR > 0) {
+    if (avgHR <= 132) {
+      wins.push(`HR very controlled: avg ${avgHR} bpm (Zone 1). Can nudge pace 5–10s/km faster next run.`);
+    } else if (avgHR <= 146) {
+      wins.push(`HR perfectly in Zone 2: avg ${avgHR} bpm. This is the aerobic sweet spot.`);
+    } else if (avgHR <= 160) {
+      watch.push(`HR drifted into Zone 3: avg ${avgHR} bpm. Ease back 10–15s/km on the next easy run.`);
+      if (avgPaceSec > 0) adjustments.push(`Adjust easy pace to ${secToPace(avgPaceSec + 15)}/km until HR stays below 146 bpm.`);
+      state.paceAdj[week] = Math.max(state.paceAdj[week] || 0, 15);
+      saveState(state);
+    } else {
+      watch.push(`HR too high for easy session: avg ${avgHR} bpm (Zone 4). This run was tempo intensity, not aerobic base work.`);
+      if (avgPaceSec > 0) adjustments.push(`Drop easy pace to ${secToPace(avgPaceSec + 25)}/km. Stop if HR exceeds 150 bpm.`);
+      state.paceAdj[week] = Math.max(state.paceAdj[week] || 0, 20);
+      saveState(state);
+    }
+  }
+
+  // ── Pacing consistency ──
+  if (laps.length >= 3) {
+    const mid = Math.floor(laps.length / 2);
+    const firstAvg = laps.slice(0, mid).reduce((a,l) => a + l.paceSecPerKm, 0) / mid;
+    const lastAvg  = laps.slice(mid).reduce((a,l) => a + l.paceSecPerKm, 0) / (laps.length - mid);
+    const fade = Math.round(lastAvg - firstAvg);
+    if (fade > 25) {
+      watch.push(`Pace fade of ${fade}s/km in the second half. Try starting ${Math.round(fade/2)}s/km slower next time.`);
+    } else if (fade < -15) {
+      wins.push(`Negative split! Second half was ${Math.abs(fade)}s/km faster — excellent pacing discipline.`);
+    } else {
+      wins.push(`Even pacing across ${laps.length} km — consistent effort throughout.`);
+    }
+  }
+
+  // ── Volume ──
+  const km = (totalDist / 1000).toFixed(1);
+  if (parseFloat(km) >= 4 && session?.type === 'run') wins.push(`Good volume: ${km} km completed.`);
+
+  if (!wins.length && !watch.length) wins.push(`Session complete: ${km} km in ${Math.floor(totalTime/60)} min.`);
+
+  return { laps, avgPaceSec, avgHR, totalDist, totalTime, wins, watch, adjustments };
+}
+
+// ── Analysis card render ──────────────────────────────────────────────────────
+
+function renderAnalysisCard() {
+  const el = document.getElementById('analysisArea');
+  const session = SESSIONS[viewDate];
+  const comp = state.completions[viewDate];
+  if (!session || session.rest || !comp) { el.innerHTML = ''; return; }
+
+  const existing = state.workoutData[viewDate];
+
+  if (!existing) {
+    el.innerHTML = `
+      <div class="upload-zone">
+        <label class="upload-btn" for="garminFileInput">
+          📎 Link Garmin activity file (.gpx or .tcx)
+        </label>
+        <input type="file" id="garminFileInput" accept=".gpx,.tcx" style="display:none"
+          onchange="handleWorkoutFile(this.files[0], '${viewDate}')">
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px;padding:0 8px">
+          Garmin Connect → open activity → ⋯ → Export to GPX
+        </div>
+      </div>`;
+    return;
+  }
+
+  const { laps, avgPaceSec, avgHR, totalDist, totalTime, wins, watch, adjustments } = existing;
+  const week = session?.week || getWeekNum(viewDate);
+  const paceRef = session?.paceRef || 'easy';
+  const planned = adjustedPace(week, paceRef);
+  const [pm, ps] = planned.split(':').map(Number);
+  const plannedSec = pm * 60 + ps;
+
+  const paceClass = avgPaceSec > 0 ? (Math.abs(avgPaceSec - plannedSec) <= 20 ? 'good' : avgPaceSec - plannedSec > 30 ? '' : 'good') : '';
+  const hrClass   = avgHR > 0 ? (avgHR <= 146 ? 'good' : 'warning') : '';
+
+  const lapsHtml = laps.map((l, i) => {
+    const diff = plannedSec > 0 ? l.paceSecPerKm - plannedSec : 0;
+    const cls = diff < -15 ? 'fast' : diff > 30 ? 'slow' : '';
+    return `<div class="lap-item ${cls}">
+      <div class="lap-num">km ${i+1}</div>
+      <div class="lap-pace">${secToPace(l.paceSecPerKm)}</div>
+      ${l.avgHR > 0 ? `<div class="lap-hr">${l.avgHR} bpm</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const winsHtml = wins.length ? `<div class="insight-section">
+    <div class="insight-title wins">✓ What went well</div>
+    ${wins.map(w => `<div class="insight-item">${w}</div>`).join('')}
+  </div>` : '';
+
+  const watchHtml = watch.length ? `<div class="insight-section">
+    <div class="insight-title watch">⚠ Things to watch</div>
+    ${watch.map(w => `<div class="insight-item">${w}</div>`).join('')}
+  </div>` : '';
+
+  const adjHtml = adjustments.length ? `<div class="insight-section">
+    <div class="insight-title adjust">→ Adjustments for next session</div>
+    ${adjustments.map(a => `<div class="insight-item">${a}</div>`).join('')}
+  </div>` : '';
+
+  el.innerHTML = `
+    <div class="analysis-card">
+      <div class="analysis-header">
+        <span>📊</span>
+        <h4>Workout Analysis</h4>
+        <span class="a-date">${new Date(viewDate + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric',month:'short'})}</span>
+      </div>
+      <div class="analysis-body">
+        <div class="analysis-metrics">
+          <div class="metric-box ${paceClass}">
+            <div class="m-val">${secToPace(avgPaceSec)}</div>
+            <div class="m-label">Avg pace</div>
+          </div>
+          <div class="metric-box ${hrClass}">
+            <div class="m-val">${avgHR > 0 ? avgHR : '–'}</div>
+            <div class="m-label">Avg HR bpm</div>
+          </div>
+          <div class="metric-box">
+            <div class="m-val">${(totalDist/1000).toFixed(1)}</div>
+            <div class="m-label">km</div>
+          </div>
+        </div>
+        ${laps.length > 1 ? `<div class="lap-grid">${lapsHtml}</div>` : ''}
+        ${winsHtml}${watchHtml}${adjHtml}
+        <div style="text-align:right;margin-top:6px">
+          <label for="garminFileReplace" style="font-size:12px;color:var(--muted);cursor:pointer">↺ Replace file</label>
+          <input type="file" id="garminFileReplace" accept=".gpx,.tcx" style="display:none"
+            onchange="handleWorkoutFile(this.files[0], '${viewDate}')">
+        </div>
+      </div>
+    </div>`;
+}
+
+async function handleWorkoutFile(file, dk) {
+  if (!file) return;
+  const text = await file.text();
+  const ext  = file.name.split('.').pop().toLowerCase();
+  const laps = ext === 'tcx' ? parseTCX(text) : ext === 'gpx' ? parseGPX(text) : null;
+  if (!laps || !laps.length) {
+    alert('Could not read the file. Make sure it\'s a GPX or TCX export from Garmin Connect.');
+    return;
+  }
+  const analysis = analyzeWorkout(laps, dk);
+  if (!analysis) return;
+  state.workoutData[dk] = analysis;
+  if (!state.completions[dk]) state.completions[dk] = 'done';
+  saveState(state);
+  render();
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
