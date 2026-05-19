@@ -230,8 +230,8 @@
 <script>
 // ── Plan data ─────────────────────────────────────────────────────────────────
 
-const RACE_DATE = new Date('2026-07-05');
-const PLAN_START = new Date('2026-05-18');
+const RACE_DATE  = new Date('2026-07-05T00:00:00');
+const PLAN_START = new Date('2026-05-18T00:00:00');
 
 const PACE_TARGETS = {
   1: { easy: '6:25', tempo: '6:10', intervals: '5:55' },
@@ -589,7 +589,10 @@ if (!state.workoutData)  state.workoutData  = {};
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function dateKey(d) {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 function today() { return dateKey(new Date()); }
 function getWeekNum(dateStr) {
