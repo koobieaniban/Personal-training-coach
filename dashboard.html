@@ -215,6 +215,8 @@
   <button class="wrist-btn" onclick="showWristMods()">🤚 De Quervain's wrist modifications</button>
   <div style="height:8px"></div>
   <button class="export-btn" onclick="exportFeedback()">↓ Export feedback JSON (for analyze_garmin.py)</button>
+  <div style="height:8px"></div>
+  <button class="export-btn" id="apiKeyBtn" onclick="promptApiKey()">🔑 Claude API key — screenshot analysis</button>
 </div>
 
 <!-- Feedback Modal -->
@@ -1184,15 +1186,18 @@ function renderAnalysisCard() {
   const existing = state.workoutData[viewDate];
 
   if (!existing) {
+    const hasKey = !!getApiKey();
     el.innerHTML = `
       <div class="upload-zone">
-        <label class="upload-btn" for="garminFileInput">
-          📎 Link Garmin activity file (.gpx or .tcx)
+        <label class="upload-btn" for="garminFileInput" style="margin-bottom:8px">
+          📸 Upload screenshot or activity file
         </label>
-        <input type="file" id="garminFileInput" accept=".gpx,.tcx" style="display:none"
+        <input type="file" id="garminFileInput" accept=".gpx,.tcx,image/*" style="display:none"
           onchange="handleWorkoutFile(this.files[0], '${viewDate}')">
-        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px;padding:0 8px">
-          Garmin Connect → open activity → ⋯ → Export to GPX
+        <div style="font-size:11px;color:var(--muted);text-align:center;padding:0 8px;line-height:1.7">
+          <strong style="color:var(--text)">Screenshot:</strong> take a screenshot of the Garmin activity screen → upload here<br>
+          <strong style="color:var(--text)">File:</strong> Garmin Connect → ⋯ → Export to GPX
+          ${!hasKey ? `<br><span style="color:#ffb347">⚠ Set your Claude API key below to enable screenshot analysis</span>` : ''}
         </div>
       </div>`;
     return;
@@ -1258,8 +1263,8 @@ function renderAnalysisCard() {
         ${laps.length > 1 ? `<div class="lap-grid">${lapsHtml}</div>` : ''}
         ${winsHtml}${watchHtml}${adjHtml}
         <div style="text-align:right;margin-top:6px">
-          <label for="garminFileReplace" style="font-size:12px;color:var(--muted);cursor:pointer">↺ Replace file</label>
-          <input type="file" id="garminFileReplace" accept=".gpx,.tcx" style="display:none"
+          <label for="garminFileReplace" style="font-size:12px;color:var(--muted);cursor:pointer">↺ Replace file or screenshot</label>
+          <input type="file" id="garminFileReplace" accept=".gpx,.tcx,image/*" style="display:none"
             onchange="handleWorkoutFile(this.files[0], '${viewDate}')">
         </div>
       </div>
@@ -1268,8 +1273,11 @@ function renderAnalysisCard() {
 
 async function handleWorkoutFile(file, dk) {
   if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const isImage = file.type.startsWith('image/') || ['jpg','jpeg','png','webp','heic','heif'].includes(ext);
+  if (isImage) { await handleScreenshotFile(file, dk); return; }
+
   const text = await file.text();
-  const ext  = file.name.split('.').pop().toLowerCase();
   const laps = ext === 'tcx' ? parseTCX(text) : ext === 'gpx' ? parseGPX(text) : null;
   if (!laps || !laps.length) {
     alert('Could not read the file. Make sure it\'s a GPX or TCX export from Garmin Connect.');
@@ -1281,6 +1289,164 @@ async function handleWorkoutFile(file, dk) {
   if (!state.completions[dk]) state.completions[dk] = 'done';
   saveState(state);
   render();
+}
+
+// ── Claude API key management ─────────────────────────────────────────────────
+
+function getApiKey() { return localStorage.getItem('hyrox_claude_key') || ''; }
+function setApiKey(k) { localStorage.setItem('hyrox_claude_key', k.trim()); }
+
+function promptApiKey() {
+  const existing = getApiKey();
+  document.getElementById('modalTitle').textContent = '🔑 Claude API Key';
+  document.getElementById('modalSub').textContent = 'One-time setup · stored only on this device';
+  document.getElementById('modalBody').innerHTML = `
+    <div style="margin-bottom:16px;font-size:13px;color:var(--muted);line-height:1.65">
+      Used only for screenshot analysis. Your key is sent directly to Anthropic's API — never stored on any server.
+      Get one at <strong style="color:var(--text)">console.anthropic.com</strong> → API Keys.
+    </div>
+    <div class="q-block">
+      <span class="q-label">API Key</span>
+      <input id="apiKeyInput" type="password" placeholder="sk-ant-api03-…"
+        style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:10px 12px;font-family:monospace;outline:none"
+        value="${existing}">
+    </div>
+    ${existing ? '<div style="font-size:12px;color:var(--done);margin-bottom:12px">✓ Key saved. Replace it above to update.</div>' : ''}
+    <button class="save-btn" onclick="saveApiKey()">Save key</button>`;
+  document.getElementById('feedbackModal').classList.add('open');
+  setTimeout(() => document.getElementById('apiKeyInput')?.focus(), 100);
+}
+
+function saveApiKey() {
+  const val = (document.getElementById('apiKeyInput')?.value || '').trim();
+  if (!val) { alert('Please enter your API key.'); return; }
+  if (!val.startsWith('sk-ant-')) { alert('That doesn\'t look like an Anthropic API key (should start with sk-ant-).'); return; }
+  setApiKey(val);
+  document.getElementById('apiKeyBtn').textContent = '🔑 Claude API key — ✓ saved';
+  closeModal();
+  render();
+}
+
+// ── Screenshot analysis ───────────────────────────────────────────────────────
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function callClaudeVision(base64, mimeType, apiKey) {
+  const prompt = `This is a Garmin fitness activity screenshot. Extract every visible workout metric and return ONLY a JSON object — no prose, no markdown fences.
+
+Required format:
+{
+  "total_distance_km": <number or null>,
+  "total_time_seconds": <number or null>,
+  "avg_pace_sec_per_km": <number or null>,
+  "avg_hr_bpm": <number or null>,
+  "max_hr_bpm": <number or null>,
+  "calories": <number or null>,
+  "laps": [
+    { "km": <lap number>, "pace_sec_per_km": <number or null>, "avg_hr": <number or null> }
+  ]
+}
+
+Conversion rules:
+- Pace MM:SS/km → total seconds (5:30 = 330, 6:15 = 375)
+- Time H:MM:SS or MM:SS → total seconds (28:45 = 1725, 1:02:30 = 3750)
+- If a per-km splits table is visible, populate the laps array in order
+- If no splits table is visible, return laps as []
+- Use null for any value not visible in the screenshot`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+        { type: 'text', text: prompt },
+      ]}],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${res.status}`);
+  }
+  const json = await res.json();
+  const text = json.content?.[0]?.text || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON in response — try a clearer screenshot');
+  return JSON.parse(match[0]);
+}
+
+async function handleScreenshotFile(file, dk) {
+  const apiKey = getApiKey();
+  if (!apiKey) { promptApiKey(); return; }
+
+  const el = document.getElementById('analysisArea');
+  el.innerHTML = `<div style="margin:12px 16px;padding:24px;text-align:center;color:var(--muted);font-size:13px;background:var(--card);border-radius:14px;border:1px solid var(--border)">
+    <div style="font-size:24px;margin-bottom:10px">🔍</div>
+    Reading screenshot with Claude vision…
+  </div>`;
+
+  try {
+    const base64   = await fileToBase64(file);
+    const mimeType = file.type || 'image/jpeg';
+    const data     = await callClaudeVision(base64, mimeType, apiKey);
+
+    // Build laps array
+    let laps = [];
+    if (data.laps && data.laps.length > 0) {
+      laps = data.laps
+        .filter(l => l.pace_sec_per_km > 0)
+        .map(l => ({
+          distM: 1000,
+          totalTimeSec: l.pace_sec_per_km,
+          paceSecPerKm: l.pace_sec_per_km,
+          avgHR: l.avg_hr || 0,
+          maxHR: 0,
+        }));
+    }
+
+    // Fall back to totals if no lap data
+    if (!laps.length && data.avg_pace_sec_per_km) {
+      const distM   = (data.total_distance_km || 1) * 1000;
+      const timeSec = data.total_time_seconds || data.avg_pace_sec_per_km * (data.total_distance_km || 1);
+      laps = [{ distM, totalTimeSec: timeSec, paceSecPerKm: data.avg_pace_sec_per_km, avgHR: data.avg_hr_bpm || 0, maxHR: data.max_hr_bpm || 0 }];
+    }
+
+    if (!laps.length) {
+      el.innerHTML = `<div style="margin:12px 16px;padding:16px;background:#2a1010;border-radius:12px;font-size:13px;color:#ff9999;line-height:1.6">
+        Could not extract workout data from that screenshot. Try a screen showing the main activity summary (pace, HR, distance), or use a GPX/TCX file instead.
+      </div>`;
+      return;
+    }
+
+    const analysis = analyzeWorkout(laps, dk);
+    if (!analysis) return;
+    analysis.fromScreenshot = true;
+    state.workoutData[dk] = analysis;
+    if (!state.completions[dk]) state.completions[dk] = 'done';
+    saveState(state);
+    render();
+
+  } catch (err) {
+    el.innerHTML = `<div style="margin:12px 16px;padding:16px;background:#2a1010;border-radius:12px;font-size:13px;color:#ff9999;line-height:1.6">
+      ${err.message}<br><br>
+      <button onclick="promptApiKey()" style="color:var(--accent2);background:none;border:none;cursor:pointer;font-size:13px;padding:0">Update API key →</button>
+    </div>`;
+  }
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
@@ -1306,6 +1472,7 @@ document.getElementById('feedbackModal').addEventListener('click', function(e) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+if (getApiKey()) document.getElementById('apiKeyBtn').textContent = '🔑 Claude API key — ✓ saved';
 render();
 </script>
 </body>
