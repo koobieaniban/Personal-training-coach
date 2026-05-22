@@ -217,6 +217,12 @@
   <button class="export-btn" onclick="exportFeedback()">↓ Export feedback JSON (for analyze_garmin.py)</button>
   <div style="height:8px"></div>
   <button class="export-btn" id="apiKeyBtn" onclick="promptApiKey()">🔑 Claude API key — screenshot analysis</button>
+  <div style="height:8px"></div>
+  <div style="display:flex;gap:8px;margin:0 16px">
+    <button class="export-btn" style="margin:0;flex:1" onclick="copySyncCode()">⇧ Copy sync code</button>
+    <button class="export-btn" style="margin:0;flex:1" onclick="pasteSyncCode()">⇩ Paste sync code</button>
+  </div>
+  <div style="font-size:11px;color:var(--muted);text-align:center;padding:6px 16px 0">Copy on one device → Paste on another to sync training data</div>
 </div>
 
 <!-- Feedback Modal -->
@@ -1462,6 +1468,65 @@ function exportFeedback() {
   a.href = URL.createObjectURL(blob);
   a.download = `hyrox-feedback-${today()}.json`;
   a.click();
+}
+
+// ── Cross-device sync ─────────────────────────────────────────────────────────
+
+function copySyncCode() {
+  try {
+    const code = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+    navigator.clipboard.writeText(code).then(() => {
+      const btn = document.querySelector('button[onclick="copySyncCode()"]');
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      btn.style.color = 'var(--done)';
+      setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 2500);
+    });
+  } catch (e) {
+    alert('Could not copy — try long-pressing the button or using a different browser.');
+  }
+}
+
+function pasteSyncCode() {
+  document.getElementById('modalTitle').textContent = '⇩ Paste sync code';
+  document.getElementById('modalSub').textContent = 'Paste the code copied from your other device';
+  document.getElementById('modalBody').innerHTML = `
+    <div style="margin-bottom:14px;font-size:13px;color:var(--muted);line-height:1.6">
+      This will <strong style="color:#ff9999">merge</strong> the pasted data with what's already on this device —
+      any session marked complete on either device will be kept.
+    </div>
+    <textarea id="syncInput" placeholder="Paste sync code here…" style="min-height:100px;font-family:monospace;font-size:12px"></textarea>
+    <button class="save-btn" style="margin-top:12px" onclick="applySyncCode()">Apply sync code</button>`;
+  document.getElementById('feedbackModal').classList.add('open');
+  setTimeout(() => document.getElementById('syncInput')?.focus(), 100);
+}
+
+function applySyncCode() {
+  const raw = (document.getElementById('syncInput')?.value || '').trim();
+  if (!raw) { alert('Nothing pasted yet.'); return; }
+  try {
+    const imported = JSON.parse(decodeURIComponent(escape(atob(raw))));
+    // Merge: prefer 'done' over 'skipped' over undefined, keep all feedback & workoutData
+    const merged = {
+      completions: { ...state.completions },
+      feedback:    { ...state.feedback,    ...imported.feedback },
+      paceAdj:     { ...state.paceAdj,     ...imported.paceAdj },
+      workoutData: { ...state.workoutData, ...imported.workoutData },
+    };
+    // For completions: 'done' always wins
+    Object.keys(imported.completions || {}).forEach(k => {
+      if (!merged.completions[k] || merged.completions[k] !== 'done') {
+        merged.completions[k] = imported.completions[k];
+      }
+    });
+    Object.assign(state, merged);
+    saveState(state);
+    closeModal();
+    render();
+    setTimeout(() => alert('✓ Sync applied — your training data is now up to date on this device.'), 100);
+  } catch (e) {
+    alert('Invalid sync code. Make sure you copied the full code from the other device.');
+  }
 }
 
 // ── Close modal on overlay click ──────────────────────────────────────────────
