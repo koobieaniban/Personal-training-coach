@@ -198,7 +198,10 @@
       <div class="race-countdown">Race in <span id="daysToRace">–</span> days</div>
     </div>
     <div class="header-date" id="headerDate">–</div>
-    <div class="header-week" id="headerWeek">–</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+      <div class="header-week" id="headerWeek">–</div>
+      <div id="syncStatus" style="font-size:11px;color:var(--muted)"></div>
+    </div>
   </div>
 
   <div class="week-strip" id="weekStrip"></div>
@@ -218,11 +221,7 @@
   <div style="height:8px"></div>
   <button class="export-btn" id="apiKeyBtn" onclick="promptApiKey()">🔑 Claude API key — screenshot analysis</button>
   <div style="height:8px"></div>
-  <div style="display:flex;gap:8px;margin:0 16px">
-    <button class="export-btn" style="margin:0;flex:1" onclick="copySyncCode()">⇧ Copy sync code</button>
-    <button class="export-btn" style="margin:0;flex:1" onclick="pasteSyncCode()">⇩ Paste sync code</button>
-  </div>
-  <div style="font-size:11px;color:var(--muted);text-align:center;padding:6px 16px 0">Copy on one device → Paste on another to sync training data</div>
+  <button class="export-btn" id="syncBtn" onclick="promptGistSetup()">☁ Auto-sync — tap to set up</button>
 </div>
 
 <!-- Feedback Modal -->
@@ -585,7 +584,7 @@ const SESSION_WRIST_MODS = {
 function loadState() {
   try { return JSON.parse(localStorage.getItem('hyrox_state') || '{}'); } catch { return {}; }
 }
-function saveState(s) { localStorage.setItem('hyrox_state', JSON.stringify(s)); }
+function saveState(s) { localStorage.setItem('hyrox_state', JSON.stringify(s)); syncToCloud(); }
 
 let state = loadState();
 // state = { completions: {dateStr: 'done'|'skipped'}, feedback: {dateStr: {...}}, paceAdj: {week: seconds} }
@@ -1470,62 +1469,141 @@ function exportFeedback() {
   a.click();
 }
 
-// ── Cross-device sync ─────────────────────────────────────────────────────────
+// ── Cloud sync (GitHub Gist) ──────────────────────────────────────────────────
 
-function copySyncCode() {
-  try {
-    const code = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
-    navigator.clipboard.writeText(code).then(() => {
-      const btn = document.querySelector('button[onclick="copySyncCode()"]');
-      const orig = btn.textContent;
-      btn.textContent = '✓ Copied!';
-      btn.style.color = 'var(--done)';
-      setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 2500);
-    });
-  } catch (e) {
-    alert('Could not copy — try long-pressing the button or using a different browser.');
-  }
+function getGistToken() { return localStorage.getItem('hyrox_gist_token') || ''; }
+function setGistToken(t) { localStorage.setItem('hyrox_gist_token', t); }
+function getGistId()    { return localStorage.getItem('hyrox_gist_id')    || ''; }
+function setGistId(id)  { localStorage.setItem('hyrox_gist_id', id); }
+
+const GIST_FILE = 'hyrox-training-state.json';
+let _syncTimer = null;
+
+function setSyncStatus(s) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const map = { syncing: ['☁ Syncing…', 'var(--muted)'], ok: ['☁ Synced ✓', 'var(--done)'], error: ['⚠ Sync failed', '#ffb347'], idle: ['', ''] };
+  const [text, color] = map[s] || map.idle;
+  el.textContent = text; el.style.color = color;
+  if (s === 'ok') setTimeout(() => setSyncStatus('idle'), 3000);
 }
 
-function pasteSyncCode() {
-  document.getElementById('modalTitle').textContent = '⇩ Paste sync code';
-  document.getElementById('modalSub').textContent = 'Paste the code copied from your other device';
-  document.getElementById('modalBody').innerHTML = `
-    <div style="margin-bottom:14px;font-size:13px;color:var(--muted);line-height:1.6">
-      This will <strong style="color:#ff9999">merge</strong> the pasted data with what's already on this device —
-      any session marked complete on either device will be kept.
-    </div>
-    <textarea id="syncInput" placeholder="Paste sync code here…" style="min-height:100px;font-family:monospace;font-size:12px"></textarea>
-    <button class="save-btn" style="margin-top:12px" onclick="applySyncCode()">Apply sync code</button>`;
-  document.getElementById('feedbackModal').classList.add('open');
-  setTimeout(() => document.getElementById('syncInput')?.focus(), 100);
+function mergeStates(local, remote) {
+  const merged = {
+    completions: { ...local.completions },
+    feedback:    { ...local.feedback,    ...remote.feedback    },
+    paceAdj:     { ...local.paceAdj,     ...remote.paceAdj     },
+    workoutData: { ...local.workoutData, ...remote.workoutData },
+  };
+  Object.keys(remote.completions || {}).forEach(k => {
+    if (!merged.completions[k] || merged.completions[k] !== 'done')
+      merged.completions[k] = remote.completions[k];
+  });
+  return merged;
 }
 
-function applySyncCode() {
-  const raw = (document.getElementById('syncInput')?.value || '').trim();
-  if (!raw) { alert('Nothing pasted yet.'); return; }
+function gistHeaders(token) {
+  return { 'Authorization': `token ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' };
+}
+
+async function createGist(token) {
+  const res = await fetch('https://api.github.com/gists', {
+    method: 'POST',
+    headers: gistHeaders(token),
+    body: JSON.stringify({ description: 'Hyrox Training Dashboard sync', public: false,
+      files: { [GIST_FILE]: { content: JSON.stringify(state) } } }),
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.message || `GitHub ${res.status}`); }
+  return (await res.json()).id;
+}
+
+async function pushToGist(token, gistId) {
+  const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+    method: 'PATCH',
+    headers: gistHeaders(token),
+    body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(state) } } }),
+  });
+  if (!res.ok) throw new Error(`GitHub ${res.status}`);
+}
+
+async function fetchFromGist(token, gistId) {
+  const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers: gistHeaders(token) });
+  if (!res.ok) throw new Error(`GitHub ${res.status}`);
+  const raw = (await res.json()).files?.[GIST_FILE]?.content;
+  if (!raw) throw new Error('State file missing from Gist');
+  return JSON.parse(raw);
+}
+
+function syncToCloud() {
+  const token = getGistToken(), gistId = getGistId();
+  if (!token || !gistId) return;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(async () => {
+    setSyncStatus('syncing');
+    try { await pushToGist(token, gistId); setSyncStatus('ok'); }
+    catch { setSyncStatus('error'); }
+  }, 2000);
+}
+
+async function syncFromCloud() {
+  const token = getGistToken(), gistId = getGistId();
+  if (!token || !gistId) return;
+  setSyncStatus('syncing');
   try {
-    const imported = JSON.parse(decodeURIComponent(escape(atob(raw))));
-    // Merge: prefer 'done' over 'skipped' over undefined, keep all feedback & workoutData
-    const merged = {
-      completions: { ...state.completions },
-      feedback:    { ...state.feedback,    ...imported.feedback },
-      paceAdj:     { ...state.paceAdj,     ...imported.paceAdj },
-      workoutData: { ...state.workoutData, ...imported.workoutData },
-    };
-    // For completions: 'done' always wins
-    Object.keys(imported.completions || {}).forEach(k => {
-      if (!merged.completions[k] || merged.completions[k] !== 'done') {
-        merged.completions[k] = imported.completions[k];
-      }
-    });
+    const remote = await fetchFromGist(token, gistId);
+    const merged = mergeStates(state, remote);
     Object.assign(state, merged);
-    saveState(state);
-    closeModal();
+    localStorage.setItem('hyrox_state', JSON.stringify(state));
+    setSyncStatus('ok');
     render();
-    setTimeout(() => alert('✓ Sync applied — your training data is now up to date on this device.'), 100);
+  } catch { setSyncStatus('error'); }
+}
+
+function promptGistSetup() {
+  const active = !!(getGistToken() && getGistId());
+  document.getElementById('modalTitle').textContent = '☁ Auto-sync setup';
+  document.getElementById('modalSub').textContent = 'Private GitHub Gist · free · phone ↔ laptop, automatic';
+  document.getElementById('modalBody').innerHTML = `
+    <div style="margin-bottom:14px;font-size:13px;color:var(--muted);line-height:1.7">
+      Your training data will sync automatically every time you log a session. One-time setup:
+      <ol style="margin-top:8px;padding-left:18px;display:flex;flex-direction:column;gap:5px">
+        <li>Go to <strong style="color:var(--text)">github.com → Settings → Developer settings → Personal access tokens → Tokens (classic)</strong></li>
+        <li>Generate new token (classic) → tick <strong style="color:var(--text)">gist</strong> scope only</li>
+        <li>Paste the token below</li>
+      </ol>
+    </div>
+    <div class="q-block">
+      <span class="q-label">GitHub Personal Access Token</span>
+      <input id="gistTokenInput" type="password" placeholder="ghp_…"
+        style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:10px 12px;font-family:monospace;outline:none"
+        value="${getGistToken()}">
+    </div>
+    ${active ? `<div style="font-size:12px;color:var(--done);margin-bottom:12px">✓ Sync active — Gist ${getGistId().slice(0,8)}…</div>` : ''}
+    <button class="save-btn" id="gistSaveBtn" onclick="saveGistToken()">${active ? 'Update token' : 'Connect & start syncing'}</button>`;
+  document.getElementById('feedbackModal').classList.add('open');
+  setTimeout(() => document.getElementById('gistTokenInput')?.focus(), 100);
+}
+
+async function saveGistToken() {
+  const token = (document.getElementById('gistTokenInput')?.value || '').trim();
+  if (!token) { alert('Please paste your GitHub token.'); return; }
+  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_'))
+    { alert('Doesn\'t look like a GitHub token (should start with ghp_ or github_pat_).'); return; }
+  const btn = document.getElementById('gistSaveBtn');
+  btn.textContent = 'Connecting…'; btn.disabled = true;
+  try {
+    setGistToken(token);
+    let gistId = getGistId();
+    if (!gistId) { gistId = await createGist(token); setGistId(gistId); }
+    else await pushToGist(token, gistId);
+    const syncBtn = document.getElementById('syncBtn');
+    syncBtn.textContent = '☁ Auto-sync — active ✓';
+    syncBtn.style.color = 'var(--done)';
+    closeModal();
+    setSyncStatus('ok');
   } catch (e) {
-    alert('Invalid sync code. Make sure you copied the full code from the other device.');
+    btn.textContent = 'Connect & start syncing'; btn.disabled = false;
+    alert(`Connection failed: ${e.message}\n\nCheck the token has "gist" scope and hasn't expired.`);
   }
 }
 
@@ -1538,7 +1616,12 @@ document.getElementById('feedbackModal').addEventListener('click', function(e) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 if (getApiKey()) document.getElementById('apiKeyBtn').textContent = '🔑 Claude API key — ✓ saved';
+if (getGistToken() && getGistId()) {
+  document.getElementById('syncBtn').textContent = '☁ Auto-sync — active ✓';
+  document.getElementById('syncBtn').style.color = 'var(--done)';
+}
 render();
+syncFromCloud();
 </script>
 </body>
 </html>
