@@ -1550,7 +1550,7 @@ function syncToCloud() {
 
 async function syncFromCloud() {
   const token = getGistToken(), gistId = getGistId();
-  if (!token || !gistId) return;
+  if (!token || !gistId) return null;
   setSyncStatus('syncing');
   try {
     const remote = await fetchFromGist(token, gistId);
@@ -1559,30 +1559,40 @@ async function syncFromCloud() {
     localStorage.setItem('hyrox_state', JSON.stringify(state));
     setSyncStatus('ok');
     render();
-  } catch { setSyncStatus('error'); }
+    return remote;
+  } catch (e) { setSyncStatus('error'); throw e; }
 }
 
 function promptGistSetup() {
   const active = !!(getGistToken() && getGistId());
   document.getElementById('modalTitle').textContent = '☁ Auto-sync setup';
-  document.getElementById('modalSub').textContent = 'Private GitHub Gist · free · phone ↔ laptop, automatic';
+  document.getElementById('modalSub').textContent = 'Private GitHub Gist · free · phone ↔ laptop';
   document.getElementById('modalBody').innerHTML = `
     <div style="margin-bottom:14px;font-size:13px;color:var(--muted);line-height:1.7">
-      Your training data will sync automatically every time you log a session. One-time setup:
+      Syncs automatically every time you log a session.
       <ol style="margin-top:8px;padding-left:18px;display:flex;flex-direction:column;gap:5px">
-        <li>Go to <strong style="color:var(--text)">github.com → Settings → Developer settings → Personal access tokens → Tokens (classic)</strong></li>
-        <li>Generate new token (classic) → tick <strong style="color:var(--text)">gist</strong> scope only</li>
-        <li>Paste the token below</li>
+        <li>github.com → Settings → Developer settings → Personal access tokens → Tokens (classic)</li>
+        <li>Generate new token → tick <strong style="color:var(--text)">gist</strong> scope only</li>
+        <li>Paste below and tap Connect</li>
       </ol>
     </div>
     <div class="q-block">
       <span class="q-label">GitHub Personal Access Token</span>
       <input id="gistTokenInput" type="password" placeholder="ghp_…"
-        style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:10px 12px;font-family:monospace;outline:none"
+        style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:10px 12px;font-family:monospace;outline:none;margin-bottom:10px"
         value="${getGistToken()}">
     </div>
-    ${active ? `<div style="font-size:12px;color:var(--done);margin-bottom:12px">✓ Sync active — Gist ${getGistId().slice(0,8)}…</div>` : ''}
-    <button class="save-btn" id="gistSaveBtn" onclick="saveGistToken()">${active ? 'Update token' : 'Connect & start syncing'}</button>`;
+    <details style="margin-bottom:14px">
+      <summary style="font-size:12px;color:var(--muted);cursor:pointer;padding:4px 0">⚙ Having trouble? Paste Gist ID manually</summary>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted);margin-bottom:6px">
+        Go to <strong style="color:var(--text)">github.com/gists</strong> on the device that has your data → open the Hyrox sync Gist → copy the ID from the URL (the long string after /gists/)
+      </div>
+      <input id="gistIdOverride" type="text" placeholder="e.g. a1b2c3d4e5f67890abcd…"
+        style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;padding:10px 12px;font-family:monospace;outline:none"
+        value="${active ? getGistId() : ''}">
+    </details>
+    <div id="syncSetupMsg" style="font-size:13px;min-height:20px;margin-bottom:10px"></div>
+    <button class="save-btn" id="gistSaveBtn" onclick="saveGistToken()">Connect & sync</button>`;
   document.getElementById('feedbackModal').classList.add('open');
   setTimeout(() => document.getElementById('gistTokenInput')?.focus(), 100);
 }
@@ -1591,43 +1601,67 @@ async function findExistingGist(token) {
   const res = await fetch('https://api.github.com/gists?per_page=100', { headers: gistHeaders(token) });
   if (!res.ok) throw new Error(`GitHub ${res.status}`);
   const gists = await res.json();
-  const found = gists.find(g => g.files?.[GIST_FILE]);
-  return found ? found.id : null;
+  const matches = gists.filter(g => g.files?.[GIST_FILE]);
+  if (!matches.length) return null;
+  // If multiple Gists exist (e.g. one per device from a failed first setup),
+  // pick the one with the most data — largest file = most training records.
+  matches.sort((a, b) => (b.files[GIST_FILE]?.size || 0) - (a.files[GIST_FILE]?.size || 0));
+  return matches[0].id;
 }
 
 async function saveGistToken() {
-  const token = (document.getElementById('gistTokenInput')?.value || '').trim();
-  if (!token) { alert('Please paste your GitHub token.'); return; }
-  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_'))
-    { alert('Doesn\'t look like a GitHub token (should start with ghp_ or github_pat_).'); return; }
+  const token    = (document.getElementById('gistTokenInput')?.value  || '').trim();
+  const manualId = (document.getElementById('gistIdOverride')?.value  || '').trim();
   const btn = document.getElementById('gistSaveBtn');
+  const msg = document.getElementById('syncSetupMsg');
+  const setMsg = (t, c = 'var(--muted)') => { if (msg) { msg.textContent = t; msg.style.color = c; } };
+
+  if (!token) { setMsg('Please paste your GitHub token.', '#ff9999'); return; }
+  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_'))
+    { setMsg('Token should start with ghp_ or github_pat_', '#ff9999'); return; }
+
   btn.disabled = true;
   try {
     setGistToken(token);
 
-    // Always search first — locally-stored ID may be a blank Gist this device
-    // created by mistake on a previous setup attempt. API returns by updated date
-    // desc, so the phone's Gist (most recently written to) comes back first.
-    btn.textContent = 'Searching for existing sync…';
-    const foundId = await findExistingGist(token);
+    let gistId = manualId || null;
 
-    if (foundId) {
-      setGistId(foundId);
-      btn.textContent = 'Found — syncing your data…';
-      await syncFromCloud();
+    if (!gistId) {
+      setMsg('Searching your account for existing sync data…');
+      btn.textContent = 'Searching…';
+      gistId = await findExistingGist(token);
+      if (gistId) setMsg(`Found a sync Gist (${gistId.slice(0,8)}…) — pulling data…`);
     } else {
-      btn.textContent = 'Creating sync…';
-      const newId = await createGist(token);
-      setGistId(newId);
+      setMsg(`Using Gist ID you provided (${gistId.slice(0,8)}…) — pulling data…`);
+    }
+
+    if (gistId) {
+      setGistId(gistId);
+      btn.textContent = 'Syncing…';
+      const remote = await syncFromCloud();
+      const done = Object.values(remote?.completions || {}).filter(v => v === 'done').length;
+      setMsg(
+        done > 0
+          ? `✓ Synced — ${done} completed session${done !== 1 ? 's' : ''} pulled from cloud`
+          : `⚠ Connected but 0 completed sessions found. If your data is on another device, paste the Gist ID manually using the field above.`,
+        done > 0 ? 'var(--done)' : '#ffb347'
+      );
+    } else {
+      setMsg('No existing sync found — creating one now…');
+      btn.textContent = 'Creating…';
+      gistId = await createGist(token);
+      setGistId(gistId);
+      setMsg('✓ Sync created. Enter this same token on your other device to connect it.', 'var(--done)');
     }
 
     document.getElementById('syncBtn').textContent = '☁ Auto-sync — active ✓';
-    document.getElementById('syncBtn').style.color = 'var(--done)';
-    closeModal();
+    document.getElementById('syncBtn').style.color  = 'var(--done)';
+    btn.textContent = 'Done ✓';
+    setTimeout(closeModal, 2000);
     setSyncStatus('ok');
   } catch (e) {
-    btn.textContent = 'Connect & start syncing'; btn.disabled = false;
-    alert(`Connection failed: ${e.message}\n\nCheck the token has "gist" scope and hasn't expired.`);
+    setMsg(`Error: ${e.message}`, '#ff9999');
+    btn.textContent = 'Connect & sync'; btn.disabled = false;
   }
 }
 
