@@ -194,6 +194,7 @@ Note any improvement in heel slide range and single-leg balance vs last week.
 | Back Squat | 4×8 | 40–50kg (controlled descent) |
 | Barbell Hip Thrust | 4×12 | 50–60kg |
 | Walking Lunges | 4×20 steps | Bodyweight → add 5kg DBs |
+| DB Bent-over Row | 3×10 each arm | 20–24kg · elbow to hip, chest braced · right wrist: use strap |
 
 **Block B — Hyrox Stations (3 rounds, 2 min rest)**
 | Station | Distance / Reps | Target |
@@ -284,6 +285,7 @@ Key focus this week: step-down control and nordic hamstring curl quality.
 | Romanian Deadlift | 3×8 | 60–70kg |
 | Single-leg Step-up + 10kg DBs | 3×8 each | 10–12kg DBs |
 | Barbell Hip Thrust | 3×10 | 70kg |
+| Barbell Bent-over Row | 3×10 | 50–60kg · overhand, hinge 45°, pull to lower chest · right wrist: use strap |
 
 **Block B — Hyrox Circuit (2 rounds, 5 min rest between)**
 | Station | Distance | Load | Target time |
@@ -293,21 +295,36 @@ Key focus this week: step-down control and nordic hamstring curl quality.
 | Sled Pull | 50m | 60–75kg total | Smooth rope-over-rope (race = 103kg) |
 | Burpee Broad Jumps | 40m (~20 jumps) | — | Controlled pace |
 
-**Session total: ~65 min**
+**Block C — Lunge/Wall Ball Primer (no rest between exercises — that's the point)**
+> HWPO insight: sandbag lunges → wall balls is the most quad-punishing back-to-back sequence in the race. First exposure to this pairing happens here, not in the Week 4 simulation.
+
+| Exercise | Volume | Load |
+|---|---|---|
+| Sandbag Lunges | 20m (10m out, 10m back) | 20kg bag on shoulders |
+| → immediately into Wall Balls | 20 reps | 6kg to 3.05m target |
+
+Do 2 rounds with 3 min rest between rounds.
+
+**Session total: ~75 min**
 
 ---
 
-### Friday — Run B (Tempo)
+### Friday — Run B (Tempo + Rowing Intervals)
 
 **Warm-up (10 min)**
 
-**Main**
+**Main — Run**
 - 2 × 2km @ 5:15/km with 3 min rest
 - 4 × 200m strides @ 4:30/km, walk back recovery
 
+**Main — Rowing (after 5 min rest from the run)**
+- 4 × 1000m row @ 2:00–2:05/500m split · 3 min rest between
+- This is the only station never trained in isolation. Goal: establish your sustainable race-day row pace before the full simulation.
+- Feel: 7–8/10 effort — controlled, not a sprint
+
 **Cool-down**
 
-**Session total: ~7km, 55 min**
+**Session total: ~7km run + ~18 min rowing, 75 min**
 
 ---
 
@@ -372,6 +389,7 @@ This is your heaviest training week — the knee block is not optional. It prote
 | Romanian Deadlift | 3×8 | 70–75kg |
 | Barbell Hip Thrust | 3×10 | 80kg |
 | Copenhagen Plank | 3×25s each | — |
+| Barbell Bent-over Row | 3×10 | 55–65kg · heavier than Week 3 · right wrist: use strap |
 
 **Block B — Full Hyrox Circuit (2 rounds, 6 min rest between)**
 | Station | Race distance | Load | Notes |
