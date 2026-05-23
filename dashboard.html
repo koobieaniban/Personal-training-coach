@@ -323,7 +323,7 @@ const SESSIONS = {
     blocks: [
       { title: 'Warm-up', items: ['500m SkiErg easy'] },
       { title: 'Knee Block — Phase 1 (12 min, 3 rounds)', knee: true, items: ['Same protocol as Week 1 Wednesday', 'Note any improvement in heel slide range and single-leg balance'] },
-      { title: 'Block A — Posterior Chain (4 rounds, 75s rest)', items: ['Back Squat 4×8 @ 40–50kg', 'Barbell Hip Thrust 4×12 @ 50–60kg', 'Walking Lunges 4×20 steps (bodyweight → +5kg DBs)'] },
+      { title: 'Block A — Posterior Chain (4 rounds, 75s rest)', items: ['Back Squat 4×8 @ 40–50kg', 'Barbell Hip Thrust 4×12 @ 50–60kg', 'Walking Lunges 4×20 steps (bodyweight → +5kg DBs)', 'DB Bent-over Row 3×10 each arm @ 20–24kg · elbow to hip, chest braced · right wrist: use strap'] },
       { title: 'Block B — Hyrox Stations (3 rounds, 2 min rest)', items: ['SkiErg 500m · build pace each round', 'Wall Balls 20 reps @ 6kg to 3.05m target', 'Farmers Carry 100m @ 2×20kg'] },
       { title: 'Sled Intro', items: ['3 × 50m sled push @ empty sled · low hips, drive with legs', '3 × 50m sled pull @ empty sled · hand-over-hand rope technique'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
@@ -372,18 +372,21 @@ const SESSIONS = {
     blocks: [
       { title: 'Warm-up', items: ['500m SkiErg'] },
       { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['TKE (heavier band) ×20 each leg', 'Step-Down (eccentric) ×12 each leg · 20–30cm box, 3–4 count lower', 'Single-leg Glute Bridge ×12 each · keep hips level', 'Nordic Hamstring Curl (assisted) ×8 · 3–4 count lower, assist up', 'Lateral Band Walk ×20 steps each direction', 'Wall Sit 45s · add 10s each week', 'Single-leg Calf Raise ×15 each · 3 count eccentric'] },
-      { title: 'Block A — Strength (3 rounds, 90s rest)', items: ['Back Squat 3×6 @ 60–70% 1RM', 'Romanian Deadlift 3×8 @ 60–70kg', 'Single-leg Step-up + 10kg DBs 3×8 each', 'Barbell Hip Thrust 3×10 @ 70kg'] },
+      { title: 'Block A — Strength (3 rounds, 90s rest)', items: ['Back Squat 3×6 @ 60–70% 1RM', 'Romanian Deadlift 3×8 @ 60–70kg', 'Single-leg Step-up + 10kg DBs 3×8 each', 'Barbell Hip Thrust 3×10 @ 70kg', 'Barbell Bent-over Row 3×10 @ 50–60kg · overhand, hinge 45°, pull to lower chest · right wrist: use strap'] },
       { title: 'Block B — Hyrox Circuit (2 rounds, 5 min rest)', items: ['SkiErg 500m', 'Sled Push 50m @ 80–100kg (build toward race weight 152kg)', 'Sled Pull 50m @ 60–75kg (build toward race weight 103kg)', 'Burpee Broad Jumps 40m (~20 jumps)'] },
+      { title: 'Block C — Lunge → Wall Ball Primer (2 rounds, 3 min rest · no rest between exercises)', items: ['Sandbag Lunges 20m @ 20kg — straight into:', 'Wall Balls 20 reps @ 6kg · first time you feel this quad-double before the Wk4 simulation'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
   '2026-06-05': { rest: true, restMsg: 'Rest day.' },
   '2026-06-06': {
-    week: 3, type: 'run', icon: '🏃', title: 'Run B — Tempo',
+    week: 3, type: 'run', icon: '🏃', title: 'Run B — Tempo + Row Intervals',
+    subtitle: 'First standalone rowing session. Establish your race-day row pace.',
     paceRef: 'tempo', kneePhase: 'activation',
     blocks: [
       { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
-      { title: 'Main', items: ['2 × 2km @ [TEMPO] · 3 min rest', '4 × 200m strides @ 4:30/km, walk back'] },
+      { title: 'Run', items: ['2 × 2km @ [TEMPO] · 3 min rest', '4 × 200m strides @ 4:30/km, walk back'] },
+      { title: 'Row (5 min after run)', items: ['4 × 1000m @ 2:00–2:05/500m split · 3 min rest between', 'Controlled 7–8/10 effort — not a sprint. Goal: find your sustainable race-day row pace before the full simulation.'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
@@ -418,7 +421,7 @@ const SESSIONS = {
     blocks: [
       { title: 'Warm-up', items: ['500m row easy'] },
       { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['This is your heaviest training week — the knee block is not optional', 'Same Phase 2 protocol · focus on step-down quality and nordic curl'] },
-      { title: 'Block A — Strength (3 rounds)', items: ['Goblet Squat 3×10 @ 24kg KB', 'Romanian Deadlift 3×8 @ 70–75kg', 'Barbell Hip Thrust 3×10 @ 80kg', 'Copenhagen Plank 3×25s each'] },
+      { title: 'Block A — Strength (3 rounds)', items: ['Goblet Squat 3×10 @ 24kg KB', 'Romanian Deadlift 3×8 @ 70–75kg', 'Barbell Hip Thrust 3×10 @ 80kg', 'Copenhagen Plank 3×25s each', 'Barbell Bent-over Row 3×10 @ 55–65kg · heavier than Week 3 · right wrist: use strap'] },
       { title: 'Block B — Full Hyrox Circuit (2 rounds, 6 min rest)', items: ['SkiErg 1000m', 'Sled Push 50m @ 120–140kg (target 152kg)', 'Sled Pull 50m @ 85–95kg (target 103kg)', 'Burpee Broad Jumps 80m (full race distance)', 'Row 1000m @ 2:00–2:05/500m split', 'Farmers Carry 200m @ 2×24kg', 'Sandbag Lunges 100m @ 20kg', 'Wall Balls 50 reps @ 6kg'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
