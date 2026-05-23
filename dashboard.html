@@ -198,10 +198,7 @@
       <div class="race-countdown">Race in <span id="daysToRace">–</span> days</div>
     </div>
     <div class="header-date" id="headerDate">–</div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
-      <div class="header-week" id="headerWeek">–</div>
-      <div id="syncStatus" style="font-size:11px;color:var(--muted)"></div>
-    </div>
+    <div class="header-week" id="headerWeek">–</div>
   </div>
 
   <div class="week-strip" id="weekStrip"></div>
@@ -221,7 +218,11 @@
   <div style="height:8px"></div>
   <button class="export-btn" id="apiKeyBtn" onclick="promptApiKey()">🔑 Claude API key — screenshot analysis</button>
   <div style="height:8px"></div>
-  <button class="export-btn" id="syncBtn" onclick="promptGistSetup()">☁ Auto-sync — tap to set up</button>
+  <div style="display:flex;gap:8px;padding:0 16px">
+    <button class="export-btn" style="margin:0;flex:1;background:#1a1d26;border-color:#4cdd82;color:#4cdd82;font-weight:700" onclick="showBackupCode()">⇧ Backup this device</button>
+    <button class="export-btn" style="margin:0;flex:1;background:#1a1d26;border-color:#5b8fff;color:#5b8fff;font-weight:700" onclick="showRestoreCode()">⇩ Restore from backup</button>
+  </div>
+  <div style="font-size:11px;color:var(--muted);text-align:center;padding:5px 16px 0">Copy backup on one device · paste restore on the other</div>
 </div>
 
 <!-- Feedback Modal -->
@@ -587,7 +588,7 @@ const SESSION_WRIST_MODS = {
 function loadState() {
   try { return JSON.parse(localStorage.getItem('hyrox_state') || '{}'); } catch { return {}; }
 }
-function saveState(s) { localStorage.setItem('hyrox_state', JSON.stringify(s)); syncToCloud(); }
+function saveState(s) { localStorage.setItem('hyrox_state', JSON.stringify(s)); }
 
 let state = loadState();
 // state = { completions: {dateStr: 'done'|'skipped'}, feedback: {dateStr: {...}}, paceAdj: {week: seconds} }
@@ -1472,24 +1473,7 @@ function exportFeedback() {
   a.click();
 }
 
-// ── Cloud sync (GitHub Gist) ──────────────────────────────────────────────────
-
-function getGistToken() { return localStorage.getItem('hyrox_gist_token') || ''; }
-function setGistToken(t) { localStorage.setItem('hyrox_gist_token', t); }
-function getGistId()    { return localStorage.getItem('hyrox_gist_id')    || ''; }
-function setGistId(id)  { localStorage.setItem('hyrox_gist_id', id); }
-
-const GIST_FILE = 'hyrox-training-state.json';
-let _syncTimer = null;
-
-function setSyncStatus(s) {
-  const el = document.getElementById('syncStatus');
-  if (!el) return;
-  const map = { syncing: ['☁ Syncing…', 'var(--muted)'], ok: ['☁ Synced ✓', 'var(--done)'], error: ['⚠ Sync failed', '#ffb347'], idle: ['', ''] };
-  const [text, color] = map[s] || map.idle;
-  el.textContent = text; el.style.color = color;
-  if (s === 'ok') setTimeout(() => setSyncStatus('idle'), 3000);
-}
+// ── Backup / Restore (copy-paste sync between devices) ───────────────────────
 
 function mergeStates(local, remote) {
   const merged = {
@@ -1505,163 +1489,62 @@ function mergeStates(local, remote) {
   return merged;
 }
 
-function gistHeaders(token) {
-  return { 'Authorization': `token ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' };
+function showBackupCode() {
+  const code = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+  document.getElementById('modalTitle').textContent = '⇧ Backup this device';
+  document.getElementById('modalSub').textContent = 'Copy this code to your other device';
+  document.getElementById('modalBody').innerHTML = `
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+      Copy the code below, then open the dashboard on your other device and tap
+      <strong style="color:var(--text)">⇩ Restore from backup</strong> and paste it there.
+    </p>
+    <textarea id="backupCodeArea" readonly
+      style="width:100%;height:120px;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--accent);font-size:11px;padding:10px 12px;font-family:monospace;resize:none;outline:none;word-break:break-all"
+    >${code}</textarea>
+    <button class="save-btn" style="margin-top:12px" onclick="
+      navigator.clipboard.writeText(document.getElementById('backupCodeArea').value)
+        .then(() => { this.textContent = 'Copied ✓'; this.style.background = 'var(--done)'; this.style.color = '#111'; })
+        .catch(() => { document.getElementById('backupCodeArea').select(); document.execCommand('copy'); this.textContent = 'Copied ✓'; });
+    ">Copy to clipboard</button>`;
+  document.getElementById('feedbackModal').classList.add('open');
+  setTimeout(() => document.getElementById('backupCodeArea')?.select(), 100);
 }
 
-async function createGist(token) {
-  const res = await fetch('https://api.github.com/gists', {
-    method: 'POST',
-    headers: gistHeaders(token),
-    body: JSON.stringify({ description: 'Hyrox Training Dashboard sync', public: false,
-      files: { [GIST_FILE]: { content: JSON.stringify(state) } } }),
-  });
-  if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.message || `GitHub ${res.status}`); }
-  return (await res.json()).id;
+function showRestoreCode() {
+  document.getElementById('modalTitle').textContent = '⇩ Restore from backup';
+  document.getElementById('modalSub').textContent = 'Paste the backup code from your other device';
+  document.getElementById('modalBody').innerHTML = `
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+      Paste the backup code you copied from your phone (or other device). Your data will be
+      merged — no sessions will be lost.
+    </p>
+    <textarea id="restoreCodeArea" placeholder="Paste backup code here…"
+      style="width:100%;height:120px;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:11px;padding:10px 12px;font-family:monospace;resize:none;outline:none;word-break:break-all"
+    ></textarea>
+    <div id="restoreMsg" style="font-size:13px;min-height:18px;margin:8px 0;color:var(--muted)"></div>
+    <button class="save-btn" onclick="applyRestoreCode()">Restore & merge</button>`;
+  document.getElementById('feedbackModal').classList.add('open');
+  setTimeout(() => document.getElementById('restoreCodeArea')?.focus(), 100);
 }
 
-async function pushToGist(token, gistId) {
-  const res = await fetch(`https://api.github.com/gists/${gistId}`, {
-    method: 'PATCH',
-    headers: gistHeaders(token),
-    body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(state) } } }),
-  });
-  if (!res.ok) throw new Error(`GitHub ${res.status}`);
-}
-
-async function fetchFromGist(token, gistId) {
-  const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers: gistHeaders(token) });
-  if (!res.ok) throw new Error(`GitHub ${res.status}`);
-  const raw = (await res.json()).files?.[GIST_FILE]?.content;
-  if (!raw) throw new Error('State file missing from Gist');
-  return JSON.parse(raw);
-}
-
-function syncToCloud() {
-  const token = getGistToken(), gistId = getGistId();
-  if (!token || !gistId) return;
-  clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(async () => {
-    setSyncStatus('syncing');
-    try { await pushToGist(token, gistId); setSyncStatus('ok'); }
-    catch { setSyncStatus('error'); }
-  }, 2000);
-}
-
-async function syncFromCloud() {
-  const token = getGistToken(), gistId = getGistId();
-  if (!token || !gistId) return null;
-  setSyncStatus('syncing');
+function applyRestoreCode() {
+  const raw = (document.getElementById('restoreCodeArea')?.value || '').trim();
+  const msg = document.getElementById('restoreMsg');
+  if (!raw) { msg.textContent = 'Paste a backup code first.'; msg.style.color = '#ff9999'; return; }
   try {
-    const remote = await fetchFromGist(token, gistId);
+    const remote = JSON.parse(decodeURIComponent(escape(atob(raw))));
+    if (typeof remote !== 'object' || !remote.completions) throw new Error('Invalid');
     const merged = mergeStates(state, remote);
     Object.assign(state, merged);
     localStorage.setItem('hyrox_state', JSON.stringify(state));
-    setSyncStatus('ok');
+    const done = Object.values(merged.completions || {}).filter(v => v === 'done').length;
+    msg.textContent = `✓ Restored — ${done} completed session${done !== 1 ? 's' : ''} now on this device`;
+    msg.style.color = 'var(--done)';
     render();
-    return remote;
-  } catch (e) { setSyncStatus('error'); throw e; }
-}
-
-function promptGistSetup() {
-  const active = !!(getGistToken() && getGistId());
-  document.getElementById('modalTitle').textContent = '☁ Auto-sync setup';
-  document.getElementById('modalSub').textContent = 'Private GitHub Gist · free · phone ↔ laptop';
-  document.getElementById('modalBody').innerHTML = `
-    <div style="margin-bottom:14px;font-size:13px;color:var(--muted);line-height:1.7">
-      Syncs automatically every time you log a session.
-      <ol style="margin-top:8px;padding-left:18px;display:flex;flex-direction:column;gap:5px">
-        <li>github.com → Settings → Developer settings → Personal access tokens → Tokens (classic)</li>
-        <li>Generate new token → tick <strong style="color:var(--text)">gist</strong> scope only</li>
-        <li>Paste below and tap Connect</li>
-      </ol>
-    </div>
-    <div class="q-block">
-      <span class="q-label">GitHub Personal Access Token</span>
-      <input id="gistTokenInput" type="password" placeholder="ghp_…"
-        style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:10px 12px;font-family:monospace;outline:none;margin-bottom:10px"
-        value="${getGistToken()}">
-    </div>
-    <details style="margin-bottom:14px">
-      <summary style="font-size:12px;color:var(--muted);cursor:pointer;padding:4px 0">⚙ Having trouble? Paste Gist ID manually</summary>
-      <div style="margin-top:8px;font-size:12px;color:var(--muted);margin-bottom:6px">
-        Go to <strong style="color:var(--text)">github.com/gists</strong> on the device that has your data → open the Hyrox sync Gist → copy the ID from the URL (the long string after /gists/)
-      </div>
-      <input id="gistIdOverride" type="text" placeholder="e.g. a1b2c3d4e5f67890abcd…"
-        style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;padding:10px 12px;font-family:monospace;outline:none"
-        value="${active ? getGistId() : ''}">
-    </details>
-    <div id="syncSetupMsg" style="font-size:13px;min-height:20px;margin-bottom:10px"></div>
-    <button class="save-btn" id="gistSaveBtn" onclick="saveGistToken()">Connect & sync</button>`;
-  document.getElementById('feedbackModal').classList.add('open');
-  setTimeout(() => document.getElementById('gistTokenInput')?.focus(), 100);
-}
-
-async function findExistingGist(token) {
-  const res = await fetch('https://api.github.com/gists?per_page=100', { headers: gistHeaders(token) });
-  if (!res.ok) throw new Error(`GitHub ${res.status}`);
-  const gists = await res.json();
-  const matches = gists.filter(g => g.files?.[GIST_FILE]);
-  if (!matches.length) return null;
-  // If multiple Gists exist (e.g. one per device from a failed first setup),
-  // pick the one with the most data — largest file = most training records.
-  matches.sort((a, b) => (b.files[GIST_FILE]?.size || 0) - (a.files[GIST_FILE]?.size || 0));
-  return matches[0].id;
-}
-
-async function saveGistToken() {
-  const token    = (document.getElementById('gistTokenInput')?.value  || '').trim();
-  const manualId = (document.getElementById('gistIdOverride')?.value  || '').trim();
-  const btn = document.getElementById('gistSaveBtn');
-  const msg = document.getElementById('syncSetupMsg');
-  const setMsg = (t, c = 'var(--muted)') => { if (msg) { msg.textContent = t; msg.style.color = c; } };
-
-  if (!token) { setMsg('Please paste your GitHub token.', '#ff9999'); return; }
-  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_'))
-    { setMsg('Token should start with ghp_ or github_pat_', '#ff9999'); return; }
-
-  btn.disabled = true;
-  try {
-    setGistToken(token);
-
-    let gistId = manualId || null;
-
-    if (!gistId) {
-      setMsg('Searching your account for existing sync data…');
-      btn.textContent = 'Searching…';
-      gistId = await findExistingGist(token);
-      if (gistId) setMsg(`Found a sync Gist (${gistId.slice(0,8)}…) — pulling data…`);
-    } else {
-      setMsg(`Using Gist ID you provided (${gistId.slice(0,8)}…) — pulling data…`);
-    }
-
-    if (gistId) {
-      setGistId(gistId);
-      btn.textContent = 'Syncing…';
-      const remote = await syncFromCloud();
-      const done = Object.values(remote?.completions || {}).filter(v => v === 'done').length;
-      setMsg(
-        done > 0
-          ? `✓ Synced — ${done} completed session${done !== 1 ? 's' : ''} pulled from cloud`
-          : `⚠ Connected but 0 completed sessions found. If your data is on another device, paste the Gist ID manually using the field above.`,
-        done > 0 ? 'var(--done)' : '#ffb347'
-      );
-    } else {
-      setMsg('No existing sync found — creating one now…');
-      btn.textContent = 'Creating…';
-      gistId = await createGist(token);
-      setGistId(gistId);
-      setMsg('✓ Sync created. Enter this same token on your other device to connect it.', 'var(--done)');
-    }
-
-    document.getElementById('syncBtn').textContent = '☁ Auto-sync — active ✓';
-    document.getElementById('syncBtn').style.color  = 'var(--done)';
-    btn.textContent = 'Done ✓';
-    setTimeout(closeModal, 2000);
-    setSyncStatus('ok');
-  } catch (e) {
-    setMsg(`Error: ${e.message}`, '#ff9999');
-    btn.textContent = 'Connect & sync'; btn.disabled = false;
+    setTimeout(closeModal, 1800);
+  } catch {
+    msg.textContent = 'Invalid backup code — make sure you copied the full text.';
+    msg.style.color = '#ff9999';
   }
 }
 
@@ -1674,12 +1557,7 @@ document.getElementById('feedbackModal').addEventListener('click', function(e) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 if (getApiKey()) document.getElementById('apiKeyBtn').textContent = '🔑 Claude API key — ✓ saved';
-if (getGistToken() && getGistId()) {
-  document.getElementById('syncBtn').textContent = '☁ Auto-sync — active ✓';
-  document.getElementById('syncBtn').style.color = 'var(--done)';
-}
 render();
-syncFromCloud();
 </script>
 </body>
 </html>
