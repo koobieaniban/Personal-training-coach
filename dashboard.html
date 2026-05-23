@@ -1587,6 +1587,14 @@ function promptGistSetup() {
   setTimeout(() => document.getElementById('gistTokenInput')?.focus(), 100);
 }
 
+async function findExistingGist(token) {
+  const res = await fetch('https://api.github.com/gists?per_page=100', { headers: gistHeaders(token) });
+  if (!res.ok) throw new Error(`GitHub ${res.status}`);
+  const gists = await res.json();
+  const found = gists.find(g => g.files?.[GIST_FILE]);
+  return found ? found.id : null;
+}
+
 async function saveGistToken() {
   const token = (document.getElementById('gistTokenInput')?.value || '').trim();
   if (!token) { alert('Please paste your GitHub token.'); return; }
@@ -1597,8 +1605,22 @@ async function saveGistToken() {
   try {
     setGistToken(token);
     let gistId = getGistId();
-    if (!gistId) { gistId = await createGist(token); setGistId(gistId); }
-    else await pushToGist(token, gistId);
+    if (!gistId) {
+      // Look for an existing Hyrox sync Gist on this account before creating a new one
+      btn.textContent = 'Searching for existing sync…';
+      gistId = await findExistingGist(token);
+      if (gistId) {
+        setGistId(gistId);
+        // Pull the existing data immediately so this device catches up
+        btn.textContent = 'Syncing your data…';
+        await syncFromCloud();
+      } else {
+        gistId = await createGist(token);
+        setGistId(gistId);
+      }
+    } else {
+      await pushToGist(token, gistId);
+    }
     const syncBtn = document.getElementById('syncBtn');
     syncBtn.textContent = '☁ Auto-sync — active ✓';
     syncBtn.style.color = 'var(--done)';
