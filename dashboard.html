@@ -1601,29 +1601,28 @@ async function saveGistToken() {
   if (!token.startsWith('ghp_') && !token.startsWith('github_pat_'))
     { alert('Doesn\'t look like a GitHub token (should start with ghp_ or github_pat_).'); return; }
   const btn = document.getElementById('gistSaveBtn');
-  btn.textContent = 'Connecting…'; btn.disabled = true;
+  btn.disabled = true;
   try {
     setGistToken(token);
-    let gistId = getGistId();
-    if (!gistId) {
-      // Look for an existing Hyrox sync Gist on this account before creating a new one
-      btn.textContent = 'Searching for existing sync…';
-      gistId = await findExistingGist(token);
-      if (gistId) {
-        setGistId(gistId);
-        // Pull the existing data immediately so this device catches up
-        btn.textContent = 'Syncing your data…';
-        await syncFromCloud();
-      } else {
-        gistId = await createGist(token);
-        setGistId(gistId);
-      }
+
+    // Always search first — locally-stored ID may be a blank Gist this device
+    // created by mistake on a previous setup attempt. API returns by updated date
+    // desc, so the phone's Gist (most recently written to) comes back first.
+    btn.textContent = 'Searching for existing sync…';
+    const foundId = await findExistingGist(token);
+
+    if (foundId) {
+      setGistId(foundId);
+      btn.textContent = 'Found — syncing your data…';
+      await syncFromCloud();
     } else {
-      await pushToGist(token, gistId);
+      btn.textContent = 'Creating sync…';
+      const newId = await createGist(token);
+      setGistId(newId);
     }
-    const syncBtn = document.getElementById('syncBtn');
-    syncBtn.textContent = '☁ Auto-sync — active ✓';
-    syncBtn.style.color = 'var(--done)';
+
+    document.getElementById('syncBtn').textContent = '☁ Auto-sync — active ✓';
+    document.getElementById('syncBtn').style.color = 'var(--done)';
     closeModal();
     setSyncStatus('ok');
   } catch (e) {
