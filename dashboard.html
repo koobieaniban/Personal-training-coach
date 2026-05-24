@@ -360,47 +360,65 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol (8 min): hip flexor lunge 90s each · IT band foam roll 60s each · calf stretch on step 60s each'] },
     ],
   },
-  '2026-05-24': {
-    week: 1, type: 'sim', icon: '🏠', title: 'Saturday — Combined Intro (Home)',
-    subtitle: 'Run → Station. All three stations work without a gym.',
+  '2026-05-24': { rest: true, restMsg: 'Rest day — Combined Intro moved to Monday 25 May (gym).' },
+
+  // ── WEEK 1 wraps up ──
+  '2026-05-25': {
+    week: 1, type: 'sim', icon: '🏋️', title: 'Combined Intro — Gym',
+    subtitle: 'First time with actual gym kit. Run → Station habit.',
     paceRef: 'easy', kneePhase: 'activation',
     blocks: [
-      { title: 'Warm-up (15 min)', items: ['Easy 1km jog', 'Knee activation (5 min)', 'Dynamic drills: leg swings · hip circles · A-skips'] },
-      { title: 'Main — 3 rounds, 3 min rest between · transition ≤30s', items: ['Round 1: 500m @ 5:40/km → Band Ski Pull-down 3×20 reps (anchor band overhead) · right wrist: hook grip only', 'Round 2: 500m @ 5:40/km → 12 Burpee Broad Jumps · right hand fist position on floor', 'Round 3: 500m @ 5:40/km → DB Farmers Walk 50m @ 2×20kg · right wrist strap'] },
+      { title: 'Warm-up (15 min)', items: ['Easy 1km jog', 'Knee activation (5 min)', 'Dynamic drills: leg swings · hip circles · A-skips × 2×20m'] },
+      { title: 'Main — 3 rounds, 3 min rest · transition ≤30s', items: ['Round 1: 500m @ 5:40/km → SkiErg 500m · loop wrist straps, open-palm hook grip, right wrist neutral', 'Round 2: 500m @ 5:40/km → 12 Burpee Broad Jumps · right hand fist position on floor', 'Round 3: 500m @ 5:40/km → Farmers Carry 50m @ 2×20kg · right wrist: lifting strap looped through handle'] },
       { title: 'Cool-down', items: ['Easy 500m jog · full knee recovery protocol'] },
     ],
-    note: 'Technique focus, not pace. The run→station habit is what matters this week. Band pull-downs teach the SkiErg movement pattern before you\'re at the gym.',
+    note: 'Technique focus, not pace. First time on a real SkiErg — learn the hinge and arm extension. The run→station habit is what matters this week.',
   },
 
-  // ── WEEK 2 ──
-  '2026-05-25': { rest: true, restMsg: 'Rest day. Well done on Week 1.' },
+  // ── WEEK 2 (Tue 26 May → Mon 1 Jun) ──
   '2026-05-26': {
-    week: 2, type: 'run', icon: '🏃', title: 'Run A — Volume Build',
-    subtitle: 'More km, first intervals.',
-    paceRef: 'intervals', kneePhase: 'activation',
+    week: 2, type: 'recovery', icon: '🧘', title: 'Recovery — Full Body Flush',
+    subtitle: '20 min. Mobility + soft tissue release.',
+    blocks: [
+      { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 60s each · IT band 60s each · calves 60s each · upper back 60s', 'Lacrosse ball or tennis ball: glutes 60s each side'] },
+      { title: 'Mobility (10 min)', items: ['Hip flexor lunge stretch 90s each side', 'Pigeon pose 60s each side', 'Doorway chest stretch 60s', 'Cat-cow 10 reps · childs pose 60s'] },
+    ],
+    note: 'No intensity. This is how you absorb Monday\'s sim session.',
+  },
+  '2026-05-27': {
+    week: 2, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
+    subtitle: 'HR-governed. Build time on feet.',
+    paceRef: 'easy', kneePhase: 'activation',
     blocks: [
       { title: 'Warm-up', items: ['5 min walk · Knee activation (5 min) · Dynamic drills'] },
-      { title: 'Main', items: ['5km easy run @ [EASY]', 'Then: 6 × 300m @ [INTERVALS], 90s rest between'] },
+      { title: 'Main', items: ['5km continuous @ [EASY] · HR 132–146 bpm throughout', 'If HR stays in Z2: add 4 × 100m strides at the end, walk back full recovery'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-05-27': { rest: true, restMsg: 'Rest day.' },
   '2026-05-28': {
+    week: 2, type: 'recovery', icon: '🧘', title: 'Recovery — Running Muscles',
+    subtitle: '20 min. Focus on what runs use.',
+    blocks: [
+      { title: 'Soft tissue (8 min)', items: ['Foam roll: hamstrings 60s each · calves 60s each · hip flexors 60s each'] },
+      { title: 'Mobility (12 min)', items: ['Standing quad stretch 60s each', 'Standing hamstring stretch 60s each', 'Hip flexor lunge 90s each', 'Calf stretch on step 60s each', 'Ankle circles 30s each'] },
+    ],
+    note: 'Sets up your legs for Friday strength and Saturday hard run.',
+  },
+  '2026-05-29': {
     week: 2, type: 'strength', icon: '💪', title: 'Strength + Stations',
     subtitle: 'Knee Block Phase 1 · Sled intro · Rowing intro',
     kneePhase: 1,
     blocks: [
       { title: 'Warm-up', items: ['500m SkiErg easy'] },
-      { title: 'Knee Block — Phase 1 (12 min, 3 rounds)', knee: true, items: ['Same protocol as Week 1 Wednesday', 'Note any improvement in heel slide range and single-leg balance'] },
-      { title: 'Block A — Posterior Chain (4 rounds, 75s rest)', items: ['Back Squat 4×8 @ 40–50kg', 'Barbell Hip Thrust 4×12 @ 50–60kg', 'Walking Lunges 4×20 steps (bodyweight → +5kg DBs)', 'DB Bent-over Row 3×10 each arm @ 20–24kg · elbow to hip, chest braced · right wrist: use strap'] },
-      { title: 'Block B — Hyrox Stations (3 rounds, 2 min rest)', items: ['SkiErg 500m · build pace each round', 'Wall Balls 20 reps @ 6kg to 3.05m target', 'Farmers Carry 100m @ 2×20kg'] },
+      { title: 'Knee Block — Phase 1 (12 min, 3 rounds)', knee: true, items: ['TKE (band) ×20 each leg · Full lockout, 1s pause', 'Short Arc Quad ×15 each · 30° → full lock, 2s hold', 'Straight Leg Raise ×15 each · 3s lower', 'Clamshell (band) ×20 each side', 'Single-leg Balance 45s each', 'Heel Slide ×15 each'] },
+      { title: 'Block A — Posterior Chain (4 rounds, 75s rest)', items: ['Back Squat 4×8 @ 40–50kg', 'Barbell Hip Thrust 4×12 @ 50–60kg', 'Walking Lunges 4×20 steps (bodyweight → +5kg DBs)', 'DB Bent-over Row 3×10 each arm @ 20–24kg · right wrist: use strap'] },
+      { title: 'Block B — Hyrox Stations (3 rounds, 2 min rest)', items: ['SkiErg 500m · build pace each round · right wrist: loop straps', 'Wall Balls 20 reps @ 6kg to 3.05m target', 'Farmers Carry 100m @ 2×20kg · right wrist: use strap'] },
       { title: 'Sled Intro', items: ['3 × 50m sled push @ empty sled · low hips, drive with legs', '3 × 50m sled pull @ empty sled · hand-over-hand rope technique'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-05-29': { rest: true, restMsg: 'Rest day.' },
   '2026-05-30': {
-    week: 2, type: 'run', icon: '🏃', title: 'Run B — Tempo Introduction',
+    week: 2, type: 'run', icon: '🏃', title: 'Tempo Run — Introduction',
     subtitle: 'First proper tempo effort.',
     paceRef: 'tempo', kneePhase: 'activation',
     blocks: [
@@ -409,8 +427,9 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-05-31': {
-    week: 2, type: 'sim', icon: '🔥', title: 'Saturday — Hyrox Simulation (Short)',
+  '2026-05-31': { rest: true, restMsg: 'Rest day. Well done on Week 2.' },
+  '2026-06-01': {
+    week: 2, type: 'sim', icon: '🔥', title: 'Simulation — Short (4 Rounds)',
     subtitle: '4 rounds, one station each. First sled work.',
     paceRef: 'easy', kneePhase: 'activation',
     blocks: [
@@ -421,10 +440,48 @@ const SESSIONS = {
     note: 'First sled session — focus entirely on technique. Hip hinge, drive with legs, stay low.',
   },
 
-  // ── WEEK 3 ──
-  '2026-06-01': { rest: true, restMsg: 'Rest day. Week 3 is when race pace starts.' },
+  // ── WEEK 3 (Tue 2 Jun → Mon 8 Jun) ──
   '2026-06-02': {
-    week: 3, type: 'run', icon: '🏃', title: 'Run A — 1km Repeats at Race Pace',
+    week: 3, type: 'recovery', icon: '🧘', title: 'Recovery — Post-Sim Flush',
+    subtitle: '20 min. Soft tissue and hip mobility.',
+    blocks: [
+      { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 60s each · IT band 60s each · calves 60s each · lats 60s'] },
+      { title: 'Mobility (10 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Thoracic rotation 10 reps each side', 'Childs pose 60s'] },
+    ],
+  },
+  '2026-06-03': {
+    week: 3, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
+    subtitle: 'HR-governed. Week 3 aerobic base.',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation (5 min) · dynamic drills'] },
+      { title: 'Main', items: ['5km @ [EASY] · HR 132–146 bpm', '4 × 100m strides at the end if HR stayed in zone'] },
+      { title: 'Cool-down', items: ['Easy 1km jog · Knee recovery protocol'] },
+    ],
+  },
+  '2026-06-04': {
+    week: 3, type: 'recovery', icon: '🧘', title: 'Recovery — Lower Body Release',
+    subtitle: '20 min. Prep legs for Friday strength.',
+    blocks: [
+      { title: 'Soft tissue (8 min)', items: ['Foam roll: hamstrings 60s each · glutes 60s each · calves 60s each'] },
+      { title: 'Mobility (12 min)', items: ['Standing quad stretch 60s each', 'Hip flexor lunge 90s each', 'Lateral hip stretch 60s each', 'Calf stretch on step 60s each'] },
+    ],
+  },
+  '2026-06-05': {
+    week: 3, type: 'strength', icon: '💪', title: 'Strength + Hyrox Circuit',
+    subtitle: 'Knee Block Phase 2 · Loaded sleds · Full circuit',
+    kneePhase: 2,
+    blocks: [
+      { title: 'Warm-up', items: ['500m SkiErg'] },
+      { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['TKE (heavier band) ×20 each leg', 'Step-Down (eccentric) ×12 each leg · 20–30cm box, 3–4 count lower', 'Single-leg Glute Bridge ×12 each · keep hips level', 'Nordic Hamstring Curl (assisted) ×8 · 3–4 count lower, assist up', 'Lateral Band Walk ×20 steps each direction', 'Wall Sit 45s', 'Single-leg Calf Raise ×15 each · 3 count eccentric'] },
+      { title: 'Block A — Strength (3 rounds, 90s rest)', items: ['Back Squat 3×6 @ 60–70% 1RM', 'Romanian Deadlift 3×8 @ 60–70kg', 'Single-leg Step-up + 10kg DBs 3×8 each', 'Barbell Hip Thrust 3×10 @ 70kg', 'Barbell Bent-over Row 3×10 @ 50–60kg · right wrist: use strap'] },
+      { title: 'Block B — Hyrox Circuit (2 rounds, 5 min rest)', items: ['SkiErg 500m', 'Sled Push 50m @ 80–100kg (build toward race weight 152kg)', 'Sled Pull 50m @ 60–75kg (build toward race weight 103kg)', 'Burpee Broad Jumps 40m (~20 jumps)'] },
+      { title: 'Block C — Lunge → Wall Ball Primer (2 rounds, 3 min rest)', items: ['Sandbag Lunges 20m @ 20kg — straight into:', 'Wall Balls 20 reps @ 6kg · first taste of this quad-double'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+    ],
+  },
+  '2026-06-06': {
+    week: 3, type: 'run', icon: '🏃', title: 'Intervals — 1km Repeats at Race Pace',
     subtitle: 'First time hitting 5:30/km target.',
     paceRef: 'intervals', kneePhase: 'activation',
     blocks: [
@@ -433,34 +490,9 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Easy 1km jog · Knee recovery protocol'] },
     ],
   },
-  '2026-06-03': { rest: true, restMsg: 'Rest day.' },
-  '2026-06-04': {
-    week: 3, type: 'strength', icon: '💪', title: 'Strength + Hyrox Circuit',
-    subtitle: 'Knee Block Phase 2 · Loaded sleds · Full circuit',
-    kneePhase: 2,
-    blocks: [
-      { title: 'Warm-up', items: ['500m SkiErg'] },
-      { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['TKE (heavier band) ×20 each leg', 'Step-Down (eccentric) ×12 each leg · 20–30cm box, 3–4 count lower', 'Single-leg Glute Bridge ×12 each · keep hips level', 'Nordic Hamstring Curl (assisted) ×8 · 3–4 count lower, assist up', 'Lateral Band Walk ×20 steps each direction', 'Wall Sit 45s · add 10s each week', 'Single-leg Calf Raise ×15 each · 3 count eccentric'] },
-      { title: 'Block A — Strength (3 rounds, 90s rest)', items: ['Back Squat 3×6 @ 60–70% 1RM', 'Romanian Deadlift 3×8 @ 60–70kg', 'Single-leg Step-up + 10kg DBs 3×8 each', 'Barbell Hip Thrust 3×10 @ 70kg', 'Barbell Bent-over Row 3×10 @ 50–60kg · overhand, hinge 45°, pull to lower chest · right wrist: use strap'] },
-      { title: 'Block B — Hyrox Circuit (2 rounds, 5 min rest)', items: ['SkiErg 500m', 'Sled Push 50m @ 80–100kg (build toward race weight 152kg)', 'Sled Pull 50m @ 60–75kg (build toward race weight 103kg)', 'Burpee Broad Jumps 40m (~20 jumps)'] },
-      { title: 'Block C — Lunge → Wall Ball Primer (2 rounds, 3 min rest · no rest between exercises)', items: ['Sandbag Lunges 20m @ 20kg — straight into:', 'Wall Balls 20 reps @ 6kg · first time you feel this quad-double before the Wk4 simulation'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  '2026-06-05': { rest: true, restMsg: 'Rest day.' },
-  '2026-06-06': {
-    week: 3, type: 'run', icon: '🏃', title: 'Run B — Tempo + Row Intervals',
-    subtitle: 'First standalone rowing session. Establish your race-day row pace.',
-    paceRef: 'tempo', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
-      { title: 'Run', items: ['2 × 2km @ [TEMPO] · 3 min rest', '4 × 200m strides @ 4:30/km, walk back'] },
-      { title: 'Row (5 min after run)', items: ['4 × 1000m @ 2:00–2:05/500m split · 3 min rest between', 'Controlled 7–8/10 effort — not a sprint. Goal: find your sustainable race-day row pace before the full simulation.'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  '2026-06-07': {
-    week: 3, type: 'sim', icon: '🔥', title: 'Saturday — Extended Simulation (6 Rounds)',
+  '2026-06-07': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-08': {
+    week: 3, type: 'sim', icon: '🔥', title: 'Extended Simulation — 6 Rounds',
     subtitle: 'Loaded sleds · run→station transitions',
     paceRef: 'intervals', kneePhase: 'activation',
     blocks: [
@@ -470,42 +502,59 @@ const SESSIONS = {
     ],
   },
 
-  // ── WEEK 4 ──
-  '2026-06-08': { rest: true, restMsg: 'Rest day. This week is your peak training week.' },
+  // ── WEEK 4 (Tue 9 Jun → Mon 15 Jun) ──
   '2026-06-09': {
-    week: 4, type: 'run', icon: '🏃', title: 'Run A — Race Pace Volume',
-    subtitle: '8 × 1km at race pace. Simulates the 8 runs on race day.',
-    paceRef: 'intervals', kneePhase: 'activation',
+    week: 4, type: 'recovery', icon: '🧘', title: 'Recovery — Post-Sim Flush',
+    subtitle: '20 min. Peak week starts fresh.',
     blocks: [
-      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
-      { title: 'Main', items: ['8 × 1km @ [INTERVALS] · 60s rest only (minimal recovery = race simulation)', 'This is the closest training rep of your 8 race runs', '1km easy cool-down jog'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
+      { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 60s each · IT band 60s each · calves 60s each · upper back 60s'] },
+      { title: 'Mobility (10 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Thoracic rotation 10 reps each side', 'Childs pose 60s'] },
+    ],
+    note: 'This week is your peak training week. Recovery today matters.',
+  },
+  '2026-06-10': {
+    week: 4, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
+    subtitle: 'HR-governed easy run. Active recovery.',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation'] },
+      { title: 'Main', items: ['Easy 5km @ [EASY] — genuinely easy, legs should feel good after', '4 × 100m strides at the end'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol + foam roll'] },
     ],
   },
-  '2026-06-10': { rest: true, restMsg: 'Rest day.' },
   '2026-06-11': {
+    week: 4, type: 'recovery', icon: '🧘', title: 'Recovery — Full Body Prep',
+    subtitle: '20 min. Set up for Friday big strength session.',
+    blocks: [
+      { title: 'Soft tissue (8 min)', items: ['Foam roll: quads 60s each · hamstrings 60s each · calves 60s each · glutes 60s each'] },
+      { title: 'Mobility (12 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Doorway chest stretch 60s', 'T-spine rotation 10 reps each side'] },
+    ],
+  },
+  '2026-06-12': {
     week: 4, type: 'strength', icon: '💪', title: 'Strength + Full Stations',
     subtitle: 'Knee Block Phase 2 · Full Hyrox circuit × 2',
     kneePhase: 2,
     blocks: [
       { title: 'Warm-up', items: ['500m row easy'] },
       { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['This is your heaviest training week — the knee block is not optional', 'Same Phase 2 protocol · focus on step-down quality and nordic curl'] },
-      { title: 'Block A — Strength (3 rounds)', items: ['Goblet Squat 3×10 @ 24kg KB', 'Romanian Deadlift 3×8 @ 70–75kg', 'Barbell Hip Thrust 3×10 @ 80kg', 'Copenhagen Plank 3×25s each', 'Barbell Bent-over Row 3×10 @ 55–65kg · heavier than Week 3 · right wrist: use strap'] },
+      { title: 'Block A — Strength (3 rounds)', items: ['Goblet Squat 3×10 @ 24kg KB', 'Romanian Deadlift 3×8 @ 70–75kg', 'Barbell Hip Thrust 3×10 @ 80kg', 'Copenhagen Plank 3×25s each', 'Barbell Bent-over Row 3×10 @ 55–65kg · right wrist: use strap'] },
       { title: 'Block B — Full Hyrox Circuit (2 rounds, 6 min rest)', items: ['SkiErg 1000m', 'Sled Push 50m @ 120–140kg (target 152kg)', 'Sled Pull 50m @ 85–95kg (target 103kg)', 'Burpee Broad Jumps 80m (full race distance)', 'Row 1000m @ 2:00–2:05/500m split', 'Farmers Carry 200m @ 2×24kg', 'Sandbag Lunges 100m @ 20kg', 'Wall Balls 50 reps @ 6kg'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-12': { rest: true, restMsg: 'Rest day.' },
   '2026-06-13': {
-    week: 4, type: 'run', icon: '🏃', title: 'Run B — Easy Recovery',
-    paceRef: 'easy', kneePhase: 'activation',
+    week: 4, type: 'run', icon: '🏃', title: 'Tempo + Row Intervals',
+    subtitle: 'First standalone rowing session. Establish your race-day row pace.',
+    paceRef: 'tempo', kneePhase: 'activation',
     blocks: [
-      { title: 'Warm-up', items: ['Knee activation'] },
-      { title: 'Main', items: ['Easy 5km @ [EASY] — genuinely easy, legs should feel good after', '4 × 200m strides at the end'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol + foam roll'] },
+      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
+      { title: 'Run', items: ['2 × 2km @ [TEMPO] · 3 min rest', '4 × 200m strides @ 4:30/km, walk back'] },
+      { title: 'Row (5 min after run)', items: ['4 × 1000m @ 2:00–2:05/500m split · 3 min rest between', 'Controlled 7–8/10 effort — goal: find your sustainable race-day row pace.'] },
+      { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-14': {
+  '2026-06-14': { rest: true, restMsg: 'Rest day. Tomorrow is the full simulation — your biggest day.' },
+  '2026-06-15': {
     week: 4, type: 'sim', icon: '🔥', title: 'FULL HYROX SIMULATION 🏁',
     subtitle: 'Treat this like race day. All 8 runs + all 8 stations.',
     paceRef: 'intervals', kneePhase: 'activation',
@@ -518,20 +567,35 @@ const SESSIONS = {
     note: 'This data tells us where to focus in Week 5. Log everything in the feedback form.',
   },
 
-  // ── WEEK 5 ──
-  '2026-06-15': { rest: true, restMsg: 'Rest day. You just did your biggest week. Earn the rest.' },
+  // ── WEEK 5 (Tue 16 Jun → Mon 22 Jun) ──
   '2026-06-16': {
-    week: 5, type: 'run', icon: '🏃', title: 'Run A — Sharpening',
-    subtitle: '5s faster than race pace. Build a buffer.',
-    paceRef: 'intervals', kneePhase: 'activation',
+    week: 5, type: 'recovery', icon: '🧘', title: 'Recovery — Most Important Session This Week',
+    subtitle: '20 min. You just did your biggest week. Absorb it.',
     blocks: [
-      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
-      { title: 'Main', items: ['5 × 1km @ [INTERVALS] (5:20/km — 10s faster than race pace)', '2km easy cool-down jog'] },
+      { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 90s each · IT band 90s each · calves 60s each · upper back 60s', 'Lacrosse ball: glutes 90s each side'] },
+      { title: 'Mobility (10 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 90s each', 'Supine spinal twist 60s each', 'Legs-up-the-wall 5 min (optional — great for recovery)'] },
+    ],
+    note: 'Do not train today. This session is the adaptation.',
+  },
+  '2026-06-17': {
+    week: 5, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
+    subtitle: '5km easy + strides. Legs should feel alive by the end.',
+    paceRef: 'easy', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation · 10 min easy walk/jog'] },
+      { title: 'Main', items: ['5km easy @ [EASY]', '6 × 100m strides @ 4:30/km · walk back full recovery'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-17': { rest: true, restMsg: 'Rest day.' },
   '2026-06-18': {
+    week: 5, type: 'recovery', icon: '🧘', title: 'Recovery — Lower Body Release',
+    subtitle: '20 min. Prep legs for Friday strength.',
+    blocks: [
+      { title: 'Soft tissue (8 min)', items: ['Foam roll: quads 60s each · hamstrings 60s each · calves 60s each'] },
+      { title: 'Mobility (12 min)', items: ['Hip flexor lunge 90s each', 'Standing quad stretch 60s each', 'Calf stretch on step 60s each', 'Lateral hip stretch 60s each'] },
+    ],
+  },
+  '2026-06-19': {
     week: 5, type: 'strength', icon: '💪', title: 'Strength + Stations (Moderate)',
     subtitle: 'Knee Block Phase 3 · Reduced volume, quality focus',
     kneePhase: 3,
@@ -543,18 +607,19 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-19': { rest: true, restMsg: 'Rest day.' },
   '2026-06-20': {
-    week: 5, type: 'run', icon: '🏃', title: 'Run B — Easy + Strides',
-    paceRef: 'easy', kneePhase: 'activation',
+    week: 5, type: 'run', icon: '🏃', title: 'Race Pace Run — 8 × 1km',
+    subtitle: '5s faster than race pace. Build a buffer.',
+    paceRef: 'intervals', kneePhase: 'activation',
     blocks: [
-      { title: 'Warm-up', items: ['Knee activation'] },
-      { title: 'Main', items: ['Easy 4km @ [EASY]', '6 × 100m strides @ 4:30/km · walk back full recovery'] },
+      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
+      { title: 'Main', items: ['8 × 1km @ [INTERVALS] · 60s rest only (simulates race-day run intervals)', 'This is the closest rep of your 8 race runs', '1km easy cool-down jog'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-21': {
-    week: 5, type: 'sim', icon: '🔥', title: 'Saturday — Mini Simulation (6 Rounds)',
+  '2026-06-21': { rest: true, restMsg: 'Rest day. Your biggest training block is complete.' },
+  '2026-06-22': {
+    week: 5, type: 'sim', icon: '🔥', title: 'Mini Simulation — 6 Rounds',
     subtitle: 'Race intensity, reduced volume.',
     paceRef: 'intervals', kneePhase: 'activation',
     blocks: [
@@ -564,9 +629,17 @@ const SESSIONS = {
     ],
   },
 
-  // ── WEEK 6 TAPER ──
-  '2026-06-22': { rest: true, restMsg: 'Rest day. Taper week begins. Do not add extra training.' },
+  // ── WEEK 6 TAPER (Tue 23 Jun → Race Day 5 Jul) ──
   '2026-06-23': {
+    week: 6, type: 'recovery', icon: '🧘', title: 'Recovery — Taper Begins',
+    subtitle: '20 min. Taper week. Do not add training.',
+    blocks: [
+      { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 60s each · IT band 60s each · calves 60s each · upper back 60s'] },
+      { title: 'Mobility (10 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Childs pose 60s', 'Legs-up-the-wall 5 min'] },
+    ],
+    note: 'Taper week begins. Trust the training. Do not add extra work.',
+  },
+  '2026-06-24': {
     week: 6, type: 'run', icon: '🏃', title: 'Easy Run — Taper',
     subtitle: 'Keep the legs moving. Nothing more.',
     paceRef: 'easy', kneePhase: 'activation',
@@ -577,7 +650,6 @@ const SESSIONS = {
     ],
     note: 'That\'s it. Do not be tempted to do more.',
   },
-  '2026-06-24': { rest: true, restMsg: 'Rest day.' },
   '2026-06-25': {
     week: 6, type: 'strength', icon: '💪', title: 'Light Touch Gym — Taper',
     subtitle: 'Knee Block Phase 3 (2 rounds only). Stay sharp, no fatigue.',
@@ -589,10 +661,20 @@ const SESSIONS = {
     ],
     note: 'Every set should feel easy. If it\'s hard, stop.',
   },
-  '2026-06-26': { rest: true, restMsg: 'Rest day.' },
-  '2026-06-27': { rest: true, restMsg: 'Rest or gentle 20 min walk. Zero intensity. Sleep 8+ hours tonight.' },
+  '2026-06-26': {
+    week: 6, type: 'run', icon: '🏃', title: 'Sharpening Run',
+    subtitle: '5 × 1km @ 5:20 — race pace feel, short.',
+    paceRef: 'intervals', kneePhase: 'activation',
+    blocks: [
+      { title: 'Warm-up', items: ['Knee activation · 10 min easy jog'] },
+      { title: 'Main', items: ['5 × 1km @ 5:20/km · 2 min rest between', 'Just a reminder to the legs — no heroics'] },
+      { title: 'Cool-down', items: ['Easy 1km jog · Knee recovery protocol'] },
+    ],
+    note: 'Last hard running before race day. Feel sharp, not wrecked.',
+  },
+  '2026-06-27': { rest: true, restMsg: 'Rest day.' },
   '2026-06-28': { rest: true, restMsg: 'Rest day.' },
-  '2026-06-29': { rest: true, restMsg: 'Rest day.' },
+  '2026-06-29': { rest: true, restMsg: 'Rest or gentle 20 min walk. Zero intensity. Sleep 8+ hours tonight.' },
   '2026-06-30': {
     week: 6, type: 'run', icon: '🏃', title: 'Shakeout Run',
     paceRef: 'easy', kneePhase: 'activation',
@@ -666,7 +748,7 @@ function dateKey(d) {
 }
 function today() { return dateKey(new Date()); }
 function getWeekNum(dateStr) {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T00:00:00');
   const diff = Math.floor((d - PLAN_START) / 86400000);
   return Math.max(1, Math.min(6, Math.floor(diff / 7) + 1));
 }
