@@ -64,6 +64,7 @@
   .type-strength { background: #1a1a2e; }
   .type-sim    { background: #2e1a1a; }
   .type-rest   { background: #1a1a1a; }
+  .type-recovery { background: #0f2020; }
   .session-title { flex: 1; }
   .session-title h2 { font-size: 16px; font-weight: 700; }
   .session-title .session-subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -71,6 +72,40 @@
   .status-pending  { background: #2a2a3a; color: var(--muted); }
   .status-done     { background: #0d2018; color: var(--done); }
   .status-skipped  { background: #2a0f0f; color: var(--skipped); }
+
+  /* ── Volume nudge ── */
+  .volume-nudge { margin: 0 16px 10px; background: #0d2018; border: 1px solid var(--done); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--done); line-height: 1.5; }
+  .volume-nudge strong { color: #7fffb3; }
+
+  /* ── Sim analysis card ── */
+  .sim-analysis { margin: 0 16px 12px; background: var(--card); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
+  .sim-analysis-header { padding: 12px 16px; background: #1e1a10; border-bottom: 1px solid #3a2e10; display: flex; align-items: center; gap: 8px; }
+  .sim-analysis-header h3 { font-size: 14px; font-weight: 700; color: #ffb347; margin: 0; }
+  .sim-analysis-body { padding: 12px 16px; }
+  .sim-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 10px 0 6px; }
+  .sim-station-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+  .sim-station-row:last-child { border-bottom: none; }
+  .sim-focus-box { background: #0d1829; border: 1px solid #1e3a5a; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #8bb8ff; line-height: 1.6; margin-top: 8px; }
+
+  /* ── Race projection ── */
+  .proj-total-box { background: #1e1e10; border: 1px solid #4a4a20; border-radius: 10px; padding: 14px 16px; text-align: center; margin-bottom: 14px; }
+  .proj-total-time { font-size: 32px; font-weight: 800; color: var(--accent); }
+  .proj-total-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .proj-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+  .proj-row:last-child { border-bottom: none; }
+  .proj-row-label { color: var(--muted); }
+  .proj-row-val { font-weight: 700; color: var(--text); }
+  .proj-confidence { font-size: 11px; text-align: center; color: var(--muted); margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+
+  /* ── Sim feedback RPE buttons ── */
+  .rpe-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+  .rpe-row:last-child { border-bottom: none; }
+  .rpe-btns { display: flex; gap: 4px; }
+  .rpe-btn { width: 30px; height: 28px; border-radius: 6px; border: 1.5px solid var(--border); background: var(--card2); color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer; transition: all .12s; }
+  .rpe-btn.sel-easy { border-color: var(--done); color: var(--done); background: #0d2018; }
+  .rpe-btn.sel-ok   { border-color: var(--accent); color: var(--accent); background: #1e2510; }
+  .rpe-btn.sel-hard { border-color: #ffb347; color: #ffb347; background: #2a1a05; }
+  .rpe-btn.sel-max  { border-color: var(--skipped); color: var(--skipped); background: #2a0f0f; }
 
   /* ── Blocks ── */
   .session-body { padding: 0 16px 16px; }
@@ -208,7 +243,10 @@
   <div id="statsCard"></div>
   <div id="sessionArea"></div>
   <div id="analysisArea"></div>
+  <div id="simAnalysisArea"></div>
 
+  <div style="height:8px"></div>
+  <button class="export-btn" style="margin:0 16px;width:calc(100% - 32px);background:#1e1e10;border-color:#ffb347;color:#ffb347;font-weight:700" onclick="showRaceProjection()">📊 Race pace projection</button>
   <div style="height:8px"></div>
   <button class="red-flag-btn" onclick="showRedFlags()">⚠ Knee red flags — know when to stop</button>
   <div style="height:8px"></div>
@@ -248,6 +286,33 @@ const PACE_TARGETS = {
   4: { easy: '6:00', tempo: '5:45', intervals: '5:30' },
   5: { easy: '6:00', tempo: '5:45', intervals: '5:30' },
   6: { easy: '6:15', tempo: '6:00', intervals: '5:30' },
+};
+
+// ── Sim station lists (for feedback form + analysis) ──────────────────────────
+const SIM_STATIONS = {
+  '2026-05-25': ['skierg','burpee','farmers'],
+  '2026-06-01': ['row','sled_push','skierg','wallball'],
+  '2026-06-08': ['skierg','sled_push','sled_pull','burpee','row','farmers'],
+  '2026-06-15': ['skierg','sled_push','sled_pull','burpee','row','farmers','lunges','wallball'],
+  '2026-06-22': ['skierg','sled_push','burpee','row','farmers','wallball'],
+};
+
+const STATION_LABELS = {
+  skierg:'SkiErg', sled_push:'Sled Push', sled_pull:'Sled Pull',
+  burpee:'Burpee Broad Jumps', row:'Rowing',
+  farmers:'Farmers Carry', lunges:'Sandbag Lunges', wallball:'Wall Balls',
+};
+
+// Race day targets in seconds
+const STATION_RACE_SEC = {
+  skierg:    { c:270, t:255, s:240 },
+  sled_push: { c:120, t:97,  s:90  },
+  sled_pull: { c:105, t:82,  s:75  },
+  burpee:    { c:360, t:315, s:300 },
+  row:       { c:255, t:232, s:225 },
+  farmers:   { c:180, t:142, s:135 },
+  lunges:    { c:300, t:255, s:240 },
+  wallball:  { c:360, t:315, s:300 },
 };
 
 // Session definitions. paceRef: which pace to highlight today.
@@ -947,16 +1012,44 @@ function openFeedback() {
       </div>
     </div>`;
 
+  const isSim = session.type === 'sim';
+  const simStations = isSim ? (SIM_STATIONS[viewDate] || []) : [];
+  const simPaceVal = existing.actual_run_pace || '';
+  const simRpeHtml = simStations.length ? `
+    <div class="q-block">
+      <span class="q-label">Station effort — how hard was each? (1 easy → 5 maxed out)</span>
+      <div style="margin-top:6px">
+        ${simStations.map(k => {
+          const cur = (existing.station_rpe || {})[k] || 0;
+          const selClass = v => cur === v ? (v <= 2 ? 'sel-easy' : v === 3 ? 'sel-ok' : v === 4 ? 'sel-hard' : 'sel-max') : '';
+          return `<div class="rpe-row">
+            <span>${STATION_LABELS[k] || k}</span>
+            <div class="rpe-btns">
+              ${[1,2,3,4,5].map(v => `<button class="rpe-btn ${selClass(v)}" data-station="${k}" data-val="${v}" onclick="selectRpe(this,${v})">${v}</button>`).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+  const simPaceHtml = isSim ? `
+    <div class="q-block">
+      <span class="q-label">Average run pace per km (e.g. 5:45)</span>
+      <input id="simPaceInput" type="text" placeholder="5:45" value="${simPaceVal}"
+        style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:10px 12px;font-family:monospace;outline:none">
+    </div>` : '';
+
   document.getElementById('modalBody').innerHTML = `
     <div class="q-block">
       <span class="q-label">Overall effort?</span>
       <div class="feel-row">${feelHtml}</div>
     </div>
     ${paceHtml}
+    ${simPaceHtml}
+    ${simRpeHtml}
     ${kneeHtml}
     <div class="q-block">
       <span class="q-label">Notes (optional)</span>
-      <textarea id="feedbackNotes" placeholder="What went well? Any issues with the knee? Anything to remember for next session…">${existing.notes || ''}</textarea>
+      <textarea id="feedbackNotes" placeholder="What went well? Any issues? Anything to remember…">${existing.notes || ''}</textarea>
     </div>
     <button class="save-btn" onclick="saveFeedback()">Save feedback</button>`;
 
@@ -986,6 +1079,15 @@ function selectKnee(el, val) {
   el._val = val;
 }
 
+function selectRpe(el, val) {
+  const station = el.dataset.station;
+  document.querySelectorAll(`.rpe-btn[data-station="${station}"]`).forEach(b => {
+    b.classList.remove('sel-easy','sel-ok','sel-hard','sel-max');
+  });
+  const cls = val <= 2 ? 'sel-easy' : val === 3 ? 'sel-ok' : val === 4 ? 'sel-hard' : 'sel-max';
+  el.classList.add(cls);
+}
+
 function saveFeedback() {
   const overall = document.querySelector('.feel-btn.selected');
   const pace = document.querySelector('.pace-opt.selected');
@@ -995,6 +1097,22 @@ function saveFeedback() {
   const session = SESSIONS[viewDate];
   const week = session?.week || getWeekNum(viewDate);
 
+  const isSim = session?.type === 'sim';
+  const simStations = isSim ? (SIM_STATIONS[viewDate] || []) : [];
+  const stationRpe = {};
+  if (isSim) {
+    simStations.forEach(k => {
+      const btn = document.querySelector(`.rpe-btn[data-station="${k}"].sel-easy, .rpe-btn[data-station="${k}"].sel-ok, .rpe-btn[data-station="${k}"].sel-hard, .rpe-btn[data-station="${k}"].sel-max`);
+      if (btn) stationRpe[k] = parseInt(btn.dataset.val);
+    });
+  }
+  const simPaceRaw = document.getElementById('simPaceInput')?.value?.trim() || '';
+  let actualRunPaceSec = 0;
+  if (simPaceRaw) {
+    const [mm, ss] = simPaceRaw.split(':').map(Number);
+    if (!isNaN(mm) && !isNaN(ss)) actualRunPaceSec = mm * 60 + ss;
+  }
+
   state.feedback[viewDate] = {
     date: viewDate,
     session: session?.title,
@@ -1003,6 +1121,7 @@ function saveFeedback() {
     knee_pain: knee ? knee._val : null,
     notes,
     timestamp: new Date().toISOString(),
+    ...(isSim && { actual_run_pace: simPaceRaw, actual_run_pace_sec: actualRunPaceSec, station_rpe: stationRpe }),
   };
   saveState(state);
   recomputePaceAdj(week);
