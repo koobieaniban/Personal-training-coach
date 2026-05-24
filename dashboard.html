@@ -567,20 +567,11 @@ const WRIST_MODS = {
   db:       { label: 'Dumbbell work', mod: 'Use a neutral (hammer) grip where possible on the right. Avoid supinated grip under load. Use wrist wrap for support.' },
 };
 
-// Map session dates → relevant wrist mods
+// Map session dates → relevant wrist mods (De Quervain's protocol ends after 31 May)
 const SESSION_WRIST_MODS = {
-  // Strength sessions - lifting straps + grip notes
   '2026-05-21': ['skierg','rdl','goblet'],
-  '2026-05-24': ['skierg','farmers','burpee'],
-  '2026-05-28': ['skierg','rdl','goblet','sled_push','sled_pull','wallball','farmers'],
-  '2026-05-31': ['row','sled_push','skierg','wallball'],
-  '2026-06-04': ['skierg','rdl','goblet','sled_push','sled_pull','burpee'],
-  '2026-06-07': ['skierg','sled_push','sled_pull','burpee','row','farmers'],
-  '2026-06-11': ['skierg','rdl','goblet','sled_push','sled_pull','burpee','row','farmers','lunges','wallball'],
-  '2026-06-14': ['skierg','sled_push','sled_pull','burpee','row','farmers','lunges','wallball'],
-  '2026-06-18': ['skierg','rdl','sled_push','sled_pull','wallball','farmers'],
-  '2026-06-21': ['skierg','sled_push','burpee','row','farmers','wallball'],
-  '2026-06-25': ['skierg','wallball','farmers'],
+  '2026-05-25': ['skierg','farmers','burpee'],
+  '2026-05-29': ['skierg','rdl','goblet','sled_push','sled_pull','wallball','farmers'],
 };
 
 // ── State management ──────────────────────────────────────────────────────────
