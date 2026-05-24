@@ -261,6 +261,9 @@
     <button class="export-btn" style="margin:0;flex:1;background:#1a1d26;border-color:#5b8fff;color:#5b8fff;font-weight:700" onclick="showRestoreCode()">⇩ Restore from backup</button>
   </div>
   <div style="font-size:11px;color:var(--muted);text-align:center;padding:5px 16px 0">Copy backup on one device · paste restore on the other</div>
+  <div style="height:8px"></div>
+  <button class="export-btn" style="margin:0 16px;width:calc(100% - 32px);background:#0d1829;border-color:#5b8fff;color:#5b8fff;font-weight:700" onclick="showCalendarExport()">📅 Add workouts to Google Calendar</button>
+  <div style="font-size:11px;color:var(--muted);text-align:center;padding:5px 16px 8px">6 AM reminders · all remaining sessions · iPhone ready</div>
 </div>
 
 <!-- Feedback Modal -->
@@ -1858,6 +1861,134 @@ document.getElementById('feedbackModal').addEventListener('click', function(e) {
 
 if (getApiKey()) document.getElementById('apiKeyBtn').textContent = '🔑 Claude API key — ✓ saved';
 render();
+
+// ── Google Calendar / ICS export ──────────────────────────────────────────────
+
+function foldICSLine(str) {
+  // RFC 5545: fold lines longer than 75 octets
+  const out = [];
+  while (str.length > 75) { out.push(str.slice(0, 75)); str = ' ' + str.slice(75); }
+  out.push(str);
+  return out.join('\r\n');
+}
+
+function escICS(str) {
+  return (str || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
+
+function toUTCStamp(dateStr, hourLocal) {
+  // dateStr = 'YYYY-MM-DD', hourLocal = hour in AEST (UTC+10)
+  // Returns compact UTC stamp like '20260524T200000Z'
+  const d = new Date(`${dateStr}T${String(hourLocal).padStart(2,'0')}:00:00+10:00`);
+  return d.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+}
+
+function generateICS() {
+  const SESSION_DURATION = { recovery: 25, run: 60, strength: 80, sim: 95 };
+  const SIM_OVERRIDE = {
+    '2026-05-25': 60, '2026-06-01': 80,
+    '2026-06-08': 105, '2026-06-15': 135, '2026-06-22': 95,
+  };
+
+  const todayStr = today();
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Hyrox Training Dashboard//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:Hyrox Training Plan 🏋️',
+    'X-WR-TIMEZONE:Australia/Brisbane',
+    'X-APPLE-CALENDAR-COLOR:#E8FF47',
+  ];
+
+  Object.entries(SESSIONS).forEach(([dk, session]) => {
+    if (!session || session.rest || dk < todayStr) return;
+    const durMin = session.type === 'sim' ? (SIM_OVERRIDE[dk] || 95) : (SESSION_DURATION[session.type] || 60);
+    const startStamp = toUTCStamp(dk, 6);
+    const endHour = 6 + Math.floor(durMin / 60);
+    const endMin  = durMin % 60;
+    const endStamp = toUTCStamp(dk, endHour) .replace(/T\d{6}Z$/, `T${String(endHour).padStart(2,'0')}${String(endMin).padStart(2,'0')}00+10:00`)
+      .replace(/Z$/, '');
+    // Recalculate properly
+    const endD = new Date(`${dk}T06:00:00+10:00`);
+    endD.setMinutes(endD.getMinutes() + durMin);
+    const endStampUTC = endD.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+
+    const typeLabel = { run: '🏃 Run', strength: '💪 Strength', sim: '🔥 Simulation', recovery: '🧘 Recovery' }[session.type] || session.type;
+    const summary = `${typeLabel}: ${session.title}`;
+
+    // Build description from blocks
+    const descParts = [session.subtitle || ''];
+    (session.blocks || []).forEach(b => {
+      descParts.push(`${b.title}:`);
+      b.items.slice(0, 4).forEach(item => {
+        const clean = item.replace(/\[EASY\]|\[TEMPO\]|\[INTERVALS\]/g, 'target pace').replace(/<[^>]+>/g, '');
+        descParts.push(`• ${clean}`);
+      });
+    });
+    if (session.note) descParts.push(`💡 ${session.note}`);
+    const desc = escICS(descParts.join('\n'));
+
+    lines.push('BEGIN:VEVENT');
+    lines.push(foldICSLine(`UID:hyrox-${dk}-${session.type}@training`));
+    lines.push(foldICSLine(`DTSTART:${startStamp}`));
+    lines.push(foldICSLine(`DTEND:${endStampUTC}`));
+    lines.push(foldICSLine(`SUMMARY:${escICS(summary)}`));
+    lines.push(foldICSLine(`DESCRIPTION:${desc}`));
+    lines.push('BEGIN:VALARM');
+    lines.push('TRIGGER:PT0S');
+    lines.push('ACTION:DISPLAY');
+    lines.push('DESCRIPTION:Time to train 💪');
+    lines.push('END:VALARM');
+    lines.push('END:VEVENT');
+  });
+
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
+function showCalendarExport() {
+  document.getElementById('modalTitle').textContent = '📅 Add to Google Calendar';
+  document.getElementById('modalSub').textContent = '6 AM reminders for every remaining session';
+  document.getElementById('modalBody').innerHTML = `
+    <div style="font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:16px">
+      This downloads a calendar file with all your remaining workouts. Each session appears at <strong style="color:var(--text)">6:00 AM</strong> with a notification.
+    </div>
+    <div style="background:#1a1d26;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">iPhone steps</div>
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.6">
+        <div><span style="color:var(--accent);font-weight:700">1</span> &nbsp;Tap <strong style="color:var(--text)">Download calendar file</strong> below</div>
+        <div><span style="color:var(--accent);font-weight:700">2</span> &nbsp;iOS opens a preview — tap <strong style="color:var(--text)">"Add All"</strong></div>
+        <div><span style="color:var(--accent);font-weight:700">3</span> &nbsp;If prompted, choose <strong style="color:var(--text)">Google Calendar</strong> as the account</div>
+        <div><span style="color:var(--accent);font-weight:700">4</span> &nbsp;Done — all sessions appear in Google Calendar with 6 AM alerts</div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px;padding:10px 12px;background:#0f1117;border-radius:8px;line-height:1.6">
+      💡 <strong style="color:var(--text)">If the file opens in Safari instead of Calendar:</strong> tap the Share button → scroll down → <em>Add to Calendar</em>
+    </div>
+    <button class="save-btn" id="calDownloadBtn" onclick="downloadICS()">📥 Download calendar file</button>`;
+  document.getElementById('feedbackModal').classList.add('open');
+}
+
+function downloadICS() {
+  const btn = document.getElementById('calDownloadBtn');
+  const ics = generateICS();
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+
+  // iPhone-friendly: try anchor click first, fall back to window.open
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'hyrox-training-plan.ics';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+  if (btn) { btn.textContent = '✓ File ready — check your Downloads or Calendar prompt'; btn.style.background = 'var(--done)'; btn.style.color = '#111'; }
+}
 </script>
 </body>
 </html>
