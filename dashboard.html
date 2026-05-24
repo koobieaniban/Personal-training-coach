@@ -690,6 +690,188 @@ function injectPace(text, week) {
     .replace(/\[INTERVALS\]/g, `<span class="pace-inline">${adjustedPace(week, 'intervals')}/km</span>`);
 }
 
+// ── Race projection ───────────────────────────────────────────────────────────
+
+function secToMin(s) {
+  const m = Math.floor(s / 60), sec = Math.round(s % 60);
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+function computeRaceProjection() {
+  // 1. Projected run pace — use actual sim paces > interval Garmin data > adjusted target
+  const simDates = Object.keys(SIM_STATIONS);
+  const simPaces = simDates
+    .map(d => state.feedback[d]?.actual_run_pace_sec)
+    .filter(p => p && p > 0);
+  const garminPaces = Object.entries(state.workoutData)
+    .filter(([k]) => SESSIONS[k]?.type === 'run' && SESSIONS[k]?.paceRef === 'intervals')
+    .map(([, d]) => d.avgPaceSec)
+    .filter(p => p > 0);
+
+  let projRunPaceSec, confidence;
+  if (simPaces.length >= 2) {
+    projRunPaceSec = simPaces.reduce((a,b)=>a+b)/simPaces.length;
+    confidence = 'high';
+  } else if (simPaces.length === 1) {
+    projRunPaceSec = simPaces[0];
+    confidence = 'medium';
+  } else if (garminPaces.length > 0) {
+    projRunPaceSec = garminPaces.reduce((a,b)=>a+b)/garminPaces.length;
+    confidence = 'medium';
+  } else {
+    const latestWeek = Math.max(...Object.values(SESSIONS).filter(s=>s&&!s.rest&&s.week).map(s=>s.week));
+    const adj = adjustedPace(latestWeek,'intervals');
+    const [m,s] = adj.split(':').map(Number);
+    projRunPaceSec = m*60+s;
+    confidence = 'low';
+  }
+
+  // 2. Station projections — adjust target by sim RPE (high RPE = slower projection)
+  const allSimFeedback = simDates.map(d => state.feedback[d]).filter(Boolean);
+  const stationRpeAvg = {};
+  Object.keys(STATION_RACE_SEC).forEach(k => {
+    const vals = allSimFeedback.map(f => f.station_rpe?.[k]).filter(v => v > 0);
+    stationRpeAvg[k] = vals.length ? vals.reduce((a,b)=>a+b)/vals.length : 3;
+  });
+
+  const ALL_RACE_STATIONS = ['skierg','sled_push','sled_pull','burpee','row','farmers','lunges','wallball'];
+  const stationProj = ALL_RACE_STATIONS.map(k => {
+    const t = STATION_RACE_SEC[k];
+    const rpe = stationRpeAvg[k] || 3;
+    // RPE 1-2: project between target and strong; 3: target; 4-5: between target and conservative
+    let sec;
+    if (rpe <= 1.5)      sec = t.s + (t.t - t.s) * 0.3;
+    else if (rpe <= 2.5) sec = t.t;
+    else if (rpe <= 3.5) sec = t.t;
+    else if (rpe <= 4.5) sec = t.t + (t.c - t.t) * 0.5;
+    else                 sec = t.c;
+    return { key: k, label: STATION_LABELS[k], sec: Math.round(sec), rpe };
+  });
+
+  const runTimeSec = projRunPaceSec * 8; // 8 × 1km runs
+  const stationTimeSec = stationProj.reduce((a,s)=>a+s.sec, 0);
+  const transitionSec = 7 * 20; // ~20s between run and station × 7 transitions
+  const totalSec = Math.round(runTimeSec + stationTimeSec + transitionSec);
+
+  return { projRunPaceSec, runTimeSec, stationProj, stationTimeSec, totalSec, confidence };
+}
+
+function showRaceProjection() {
+  const p = computeRaceProjection();
+  const totalMin = Math.floor(p.totalSec/60);
+
+  const confLabel = { low: '⚠ Low — based on pace targets only (no sim data yet)', medium: '○ Medium — limited sim data', high: '● High — based on multiple simulation sessions' }[p.confidence];
+
+  const stationsHtml = p.stationProj.map(s => {
+    const rpe = s.rpe;
+    const cls = rpe <= 2 ? 'fast' : rpe >= 4 ? 'slow' : '';
+    return `<div class="proj-row">
+      <span class="proj-row-label">${s.label}</span>
+      <span class="proj-row-val ${cls}">${secToMin(s.sec)}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('modalTitle').textContent = '📊 Race Pace Projection';
+  document.getElementById('modalSub').textContent = `Based on your training data · updated each session`;
+  document.getElementById('modalBody').innerHTML = `
+    <div class="proj-total-box">
+      <div class="proj-total-time">${totalMin} min</div>
+      <div class="proj-total-label">Projected finish time</div>
+    </div>
+    <div class="proj-section">
+      <div class="sim-section-title">Run breakdown (8 × 1km)</div>
+      <div class="proj-row">
+        <span class="proj-row-label">Target run pace</span>
+        <span class="proj-row-val">${secToPace(p.projRunPaceSec)}/km</span>
+      </div>
+      <div class="proj-row">
+        <span class="proj-row-label">Total run time</span>
+        <span class="proj-row-val">${secToMin(p.runTimeSec)}</span>
+      </div>
+    </div>
+    <div class="proj-section">
+      <div class="sim-section-title">Station breakdown</div>
+      ${stationsHtml}
+      <div class="proj-row" style="margin-top:4px;border-top:1px solid var(--border);padding-top:8px">
+        <span class="proj-row-label">Total station time</span>
+        <span class="proj-row-val">${secToMin(p.stationTimeSec)}</span>
+      </div>
+    </div>
+    <div class="proj-confidence">${confLabel}<br>Log more simulation feedback to improve accuracy.</div>`;
+  document.getElementById('feedbackModal').classList.add('open');
+}
+
+// ── Sim analysis card ─────────────────────────────────────────────────────────
+
+function renderSimAnalysis() {
+  const el = document.getElementById('simAnalysisArea');
+  if (!el) return;
+  // Find the most recently completed sim with feedback
+  const simDates = Object.keys(SIM_STATIONS)
+    .filter(d => state.completions[d] === 'done' && state.feedback[d]?.station_rpe);
+  if (!simDates.length) { el.innerHTML = ''; return; }
+  const lastSim = simDates.sort().pop();
+  const fb = state.feedback[lastSim];
+  const rpe = fb.station_rpe || {};
+
+  // Sort stations by RPE descending
+  const stations = SIM_STATIONS[lastSim] || [];
+  const sorted = stations.slice().sort((a,b) => (rpe[b]||0) - (rpe[a]||0));
+  const weakest = sorted.filter(k => (rpe[k]||0) >= 4);
+  const strongest = sorted.filter(k => (rpe[k]||0) <= 2);
+
+  const rowsHtml = stations.map(k => {
+    const r = rpe[k] || 0;
+    const bar = r ? '●'.repeat(r) + '○'.repeat(5-r) : '–';
+    const col = r >= 4 ? 'var(--skipped)' : r <= 2 && r > 0 ? 'var(--done)' : 'var(--accent)';
+    return `<div class="sim-station-row">
+      <span>${STATION_LABELS[k]}</span>
+      <span style="color:${col};font-family:monospace;letter-spacing:2px;font-size:12px">${bar}</span>
+    </div>`;
+  }).join('');
+
+  let focusHtml = '';
+  if (weakest.length) {
+    const focuses = weakest.map(k => {
+      const tips = { skierg: 'SkiErg pacing — aim for negative split (start slower)', sled_push: 'Sled Push power — add load in strength sessions', sled_pull: 'Sled Pull technique — smooth hand-over-hand, keep tension', burpee: 'Burpee cadence — control the jump, breathe on the way up', row: 'Rowing split — hold 2:00–2:05/500m regardless of fatigue', farmers: 'Farmers grip — use straps, walk fast with shorter steps', lunges: 'Lunge pacing — drive through front heel, stay upright', wallball: 'Wall ball rhythm — find a cycle, unbroken is always faster' };
+      return `<strong style="color:var(--text)">${STATION_LABELS[k]}:</strong> ${tips[k] || 'Focus on station efficiency'}`;
+    });
+    focusHtml = `<div class="sim-focus-box">🎯 <strong>Focus for next strength session:</strong><br>${focuses.join('<br>')}`;
+    if (fb.actual_run_pace_sec > 0) {
+      const diff = Math.round(fb.actual_run_pace_sec - 330);
+      if (diff > 15) focusHtml += `<br><strong style="color:var(--text)">Run pace:</strong> ${diff}s/km slower than race target — interval work on Saturday is key`;
+      else if (diff < -15) focusHtml += `<br><strong style="color:var(--text)">Run pace:</strong> ${Math.abs(diff)}s/km faster than target — great buffer, keep this discipline on race day`;
+    }
+    focusHtml += `</div>`;
+  } else if (strongest.length === stations.length) {
+    focusHtml = `<div class="sim-focus-box">💪 All stations felt easy — time to add load or increase run pace next simulation.</div>`;
+  }
+
+  const simTitle = SESSIONS[lastSim]?.title || 'Last Simulation';
+  el.innerHTML = `
+    <div class="sim-analysis">
+      <div class="sim-analysis-header"><h3>📊 Sim Analysis — ${simTitle}</h3></div>
+      <div class="sim-analysis-body">
+        <div class="sim-section-title">Station effort (1 easy → 5 maxed)</div>
+        ${rowsHtml}
+        ${focusHtml}
+      </div>
+    </div>`;
+}
+
+// ── Volume nudge ──────────────────────────────────────────────────────────────
+
+function getVolumeNudge(week) {
+  const runFeedback = Object.entries(state.feedback)
+    .filter(([k, v]) => SESSIONS[k]?.week === week && SESSIONS[k]?.type === 'run' && v.pace_feel !== null && v.pace_feel !== undefined)
+    .map(([, v]) => v.pace_feel);
+  if (runFeedback.length < 2) return null;
+  const avg = runFeedback.reduce((a,b)=>a+b,0) / runFeedback.length;
+  if (avg <= -1.5) return 'strong';
+  if (avg <= -0.75) return 'mild';
+  return null;
+}
+
 // ── Pace adjustment engine ────────────────────────────────────────────────────
 
 function recomputePaceAdj(week) {
@@ -727,6 +909,7 @@ function render() {
   renderWristAlert();
   renderSession();
   renderAnalysisCard();
+  renderSimAnalysis();
 }
 
 function renderWristAlert() {
@@ -906,7 +1089,14 @@ function renderSession() {
     actionHtml = `<div class="action-bar"><button class="btn btn-undo btn-full" onclick="undoComplete()">Undo skip</button></div>`;
   }
 
-  area.innerHTML = `
+  const nudge = session.type === 'run' ? getVolumeNudge(week) : null;
+  const nudgeHtml = nudge === 'strong'
+    ? `<div class="volume-nudge">💪 <strong>Your runs this week are feeling easy.</strong> Consider adding one extra rep to today's interval set, or extending the easy run by 1km.</div>`
+    : nudge === 'mild'
+    ? `<div class="volume-nudge">📈 <strong>Pace is feeling manageable.</strong> If legs feel good today, push the last rep 5s/km faster than target.</div>`
+    : '';
+
+  area.innerHTML = nudgeHtml + `
     <div class="session-card">
       <div class="session-header">
         <div class="session-type-badge type-${session.type}">${session.icon}</div>
