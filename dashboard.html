@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hyrox Training · July 5</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg:        #0f1117;
@@ -233,6 +234,48 @@
   .insight-title.adjust { color: var(--accent2); }
   .insight-item { font-size: 13px; line-height: 1.5; padding: 5px 0; border-bottom: 1px solid var(--border); }
   .insight-item:last-child { border-bottom: none; }
+  /* ── Auth modal + user pill ── */
+  .auth-overlay { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:100; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .auth-overlay.hidden { display:none; }
+  .auth-box { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:28px 24px; width:100%; max-width:380px; }
+  .auth-box h2 { font-size:20px; font-weight:800; margin-bottom:4px; }
+  .auth-box .auth-sub { font-size:13px; color:var(--muted); margin-bottom:20px; }
+  .auth-input { width:100%; background:var(--card2); border:1.5px solid var(--border); border-radius:8px; color:var(--text); font-size:15px; padding:11px 14px; margin-bottom:10px; outline:none; font-family:inherit; }
+  .auth-input:focus { border-color:var(--accent); }
+  .auth-btn { width:100%; background:var(--accent); color:#0f1117; border:none; border-radius:8px; padding:12px; font-size:15px; font-weight:800; cursor:pointer; margin-top:4px; }
+  .auth-btn:active { opacity:.85; }
+  .auth-link { text-align:center; margin-top:14px; font-size:13px; color:var(--muted); }
+  .auth-link a { color:var(--accent); cursor:pointer; text-decoration:none; }
+  .auth-error { background:#2a0f0f; border:1px solid var(--skipped); border-radius:8px; padding:10px 12px; font-size:13px; color:var(--skipped); margin-bottom:10px; display:none; }
+  .user-pill { display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--border); border-radius:20px; padding:5px 12px 5px 6px; cursor:pointer; }
+  .user-pill .up-avatar { width:24px; height:24px; border-radius:50%; background:var(--accent); color:#0f1117; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .user-pill .up-name { font-size:12px; font-weight:600; max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sign-in-btn { font-size:12px; font-weight:700; color:var(--accent); background:transparent; border:1.5px solid var(--accent); border-radius:20px; padding:5px 14px; cursor:pointer; }
+  /* ── Setup wizard ── */
+  .wizard-overlay { position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .wizard-overlay.hidden { display:none; }
+  .wizard-box { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:24px; width:100%; max-width:420px; max-height:90vh; overflow-y:auto; }
+  .wizard-box h2 { font-size:18px; font-weight:800; margin-bottom:4px; }
+  .wizard-sub { font-size:13px; color:var(--muted); margin-bottom:20px; }
+  .wizard-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:6px; display:block; }
+  .wizard-field { margin-bottom:16px; }
+  .sync-options { display:flex; flex-direction:column; gap:8px; }
+  .sync-opt { display:flex; align-items:flex-start; gap:12px; padding:12px; background:var(--card2); border:1.5px solid var(--border); border-radius:10px; cursor:pointer; transition:all .15s; }
+  .sync-opt.selected { border-color:var(--accent); background:#1e2510; }
+  .sync-opt .so-icon { font-size:20px; flex-shrink:0; margin-top:1px; }
+  .sync-opt .so-title { font-size:13px; font-weight:700; }
+  .sync-opt .so-desc { font-size:12px; color:var(--muted); margin-top:2px; line-height:1.4; }
+  .wizard-next { width:100%; background:var(--accent); color:#0f1117; border:none; border-radius:8px; padding:12px; font-size:15px; font-weight:800; cursor:pointer; margin-top:8px; }
+  .wizard-step { display:none; }
+  .wizard-step.active { display:block; }
+  .wizard-progress { display:flex; gap:6px; margin-bottom:20px; }
+  .wizard-dot { height:4px; border-radius:2px; flex:1; background:var(--border); transition:all .2s; }
+  .wizard-dot.done { background:var(--accent); }
+  /* ── Sync status badge ── */
+  .sync-badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:3px 8px; border-radius:10px; }
+  .sync-badge.synced { background:#0d2018; color:var(--done); }
+  .sync-badge.syncing { background:#1e2010; color:var(--accent); }
+  .sync-badge.offline { background:#2a2a3a; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -240,7 +283,10 @@
   <div class="header">
     <div class="header-top">
       <div class="logo">Hyrox Plan</div>
-      <div class="race-countdown">Race in <span id="daysToRace">–</span> days</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="race-countdown">Race in <span id="daysToRace">–</span> days</div>
+        <div id="userHeaderArea"></div>
+      </div>
     </div>
     <div class="header-date" id="headerDate">–</div>
     <div class="header-week" id="headerWeek">–</div>
@@ -737,10 +783,345 @@ const SESSIONS = {
 
 // ── State management ──────────────────────────────────────────────────────────
 
+// ── Supabase client ──────────────────────────────────────────────────────────
+
+const SUPABASE_URL = 'https://bphjvdtlcuqnewyykfhk.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwaGp2ZHRsY3VxbmV3eXlrZmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzczNzksImV4cCI6MjA5NTkxMzM3OX0.tB2xn3EIRy8rW078-0QFpu8bmxyLw95r-MqPoxkYFKY';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let userProfile  = null;
+
+// ── Local state (always the live cache) ──────────────────────────────────────
+
 function loadState() {
   try { return JSON.parse(localStorage.getItem('hyrox_state') || '{}'); } catch { return {}; }
 }
-function saveState(s) { localStorage.setItem('hyrox_state', JSON.stringify(s)); }
+function saveLocalState(s) { localStorage.setItem('hyrox_state', JSON.stringify(s)); }
+
+function saveState(s) {
+  saveLocalState(s);
+  if (currentUser) pushTrainingState(s); // fire-and-forget to Supabase
+}
+
+// ── Supabase data layer ───────────────────────────────────────────────────────
+
+async function pushTrainingState(s) {
+  if (!currentUser) return;
+  await sb.from('training_state')
+    .upsert({ user_id: currentUser.id, completions: s.completions || {}, pace_adj: s.paceAdj || {}, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+}
+
+async function pushFeedback(dateStr, feedbackObj) {
+  if (!currentUser) return;
+  const row = {
+    user_id: currentUser.id,
+    session_date: dateStr,
+    session_title:       feedbackObj.session || null,
+    overall_feel:        feedbackObj.overall_feel ?? null,
+    pace_feel:           feedbackObj.pace_feel ?? null,
+    knee_pain:           feedbackObj.knee_pain ?? null,
+    notes:               feedbackObj.notes || null,
+    splits:              feedbackObj.splits || null,
+    actual_run_pace_sec: feedbackObj.actual_run_pace_sec || null,
+    actual_station_sec:  feedbackObj.actual_station_sec || null,
+    station_rpe:         feedbackObj.station_rpe || null,
+    updated_at:          new Date().toISOString(),
+  };
+  await sb.from('session_feedback').upsert(row, { onConflict: 'user_id,session_date' });
+}
+
+async function pushWorkoutData(dateStr, data) {
+  if (!currentUser) return;
+  await sb.from('workout_data').upsert({
+    user_id: currentUser.id,
+    session_date: dateStr,
+    source: data.source || 'manual',
+    raw_data: data,
+    avg_pace_sec: data.avgPaceSec || null,
+    avg_hr: data.avgHR || null,
+    distance_m: data.distanceM || null,
+    laps: data.laps || null,
+  }, { onConflict: 'user_id,session_date' });
+}
+
+async function loadStateFromSupabase() {
+  if (!currentUser) return null;
+  try {
+    const [tsRes, fbRes, wdRes] = await Promise.all([
+      sb.from('training_state').select('*').eq('user_id', currentUser.id).single(),
+      sb.from('session_feedback').select('*').eq('user_id', currentUser.id),
+      sb.from('workout_data').select('*').eq('user_id', currentUser.id),
+    ]);
+
+    const ts = tsRes.data;
+    const feedback = {};
+    (fbRes.data || []).forEach(f => { feedback[f.session_date] = f; });
+    const workoutData = {};
+    (wdRes.data || []).forEach(w => { workoutData[w.session_date] = w.raw_data || {}; });
+
+    return {
+      completions: ts?.completions || {},
+      paceAdj:     ts?.pace_adj   || {},
+      feedback,
+      workoutData,
+    };
+  } catch (e) {
+    console.warn('Supabase load failed, using local state', e);
+    return null;
+  }
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+async function initAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) {
+    currentUser = session.user;
+    await loadUserData();
+  }
+
+  sb.auth.onAuthStateChange(async (_event, session) => {
+    currentUser = session?.user || null;
+    if (currentUser) {
+      await loadUserData();
+    } else {
+      userProfile = null;
+      state = loadState();
+    }
+    renderUserHeader();
+    render();
+  });
+
+  renderUserHeader();
+}
+
+async function loadUserData() {
+  // Load profile
+  const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  userProfile = data;
+
+  // Load state from Supabase (source of truth when logged in)
+  const remote = await loadStateFromSupabase();
+  if (remote) {
+    state = remote;
+    // Ensure required keys exist
+    if (!state.completions) state.completions = {};
+    if (!state.feedback)    state.feedback    = {};
+    if (!state.paceAdj)     state.paceAdj     = {};
+    if (!state.workoutData) state.workoutData  = {};
+    saveLocalState(state);
+  }
+}
+
+async function handleLogin() {
+  const email = document.getElementById('loginEmail')?.value?.trim();
+  const password = document.getElementById('loginPassword')?.value;
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+  if (!email || !password) { errEl.textContent = 'Please enter email and password.'; errEl.style.display = 'block'; return; }
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+  closeAuthOverlay();
+}
+
+async function handleSignup() {
+  const name  = document.getElementById('signupName')?.value?.trim();
+  const email = document.getElementById('signupEmail')?.value?.trim();
+  const pass  = document.getElementById('signupPassword')?.value;
+  const errEl = document.getElementById('signupError');
+  errEl.style.display = 'none';
+  if (!name || !email || !pass) { errEl.textContent = 'Please fill in all fields.'; errEl.style.display = 'block'; return; }
+  if (pass.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
+  const { error } = await sb.auth.signUp({ email, password: pass, options: { data: { name } } });
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+  closeAuthOverlay();
+  showWizard();
+}
+
+async function handleForgotPassword() {
+  const email = document.getElementById('loginEmail')?.value?.trim();
+  if (!email) { alert('Enter your email address first.'); return; }
+  await sb.auth.resetPasswordForEmail(email);
+  alert('Password reset email sent — check your inbox.');
+}
+
+async function handleSignOut() {
+  await sb.auth.signOut();
+  document.getElementById('profileMenu').classList.add('hidden');
+  state = loadState();
+  render();
+}
+
+function showAuthOverlay()  { document.getElementById('authOverlay').classList.remove('hidden'); }
+function closeAuthOverlay() { document.getElementById('authOverlay').classList.add('hidden'); }
+function switchToSignup()   { document.getElementById('authLogin').style.display='none'; document.getElementById('authSignup').style.display='block'; }
+function switchToLogin()    { document.getElementById('authSignup').style.display='none'; document.getElementById('authLogin').style.display='block'; }
+
+function renderUserHeader() {
+  const el = document.getElementById('userHeaderArea');
+  if (!el) return;
+  if (currentUser && userProfile) {
+    const initials = (userProfile.name || currentUser.email || 'U').slice(0,1).toUpperCase();
+    const name = userProfile.name || currentUser.email.split('@')[0];
+    el.innerHTML = `<div class="user-pill" onclick="showProfileMenu()">
+      <div class="up-avatar">${initials}</div>
+      <div class="up-name">${name}</div>
+    </div>`;
+  } else {
+    el.innerHTML = `<button class="sign-in-btn" onclick="showAuthOverlay()">Sign in</button>`;
+  }
+}
+
+function showProfileMenu() {
+  const menu = document.getElementById('profileMenu');
+  const body = document.getElementById('profileMenuBody');
+  const syncLabel = { intervals_icu:'Intervals.icu auto-sync', file_upload:'File upload', screenshot:'Screenshot', manual:'Manual entry' };
+  body.innerHTML = `
+    <div style="font-weight:700;font-size:15px;margin-bottom:4px">${userProfile?.name || ''}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">${currentUser?.email || ''}</div>
+    <div style="font-size:12px;color:var(--muted)">Sync method</div>
+    <div style="font-size:13px;font-weight:600;margin-bottom:14px">${syncLabel[userProfile?.sync_method] || 'Manual entry'}</div>
+    <button class="auth-btn" style="background:var(--card2);color:var(--text);border:1px solid var(--border);margin-bottom:0;font-size:13px" onclick="document.getElementById('profileMenu').classList.add('hidden');showWizard()">⚙ Update profile &amp; sync method</button>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <button style="width:100%;background:transparent;border:1px solid #2a0f0f;color:var(--skipped);border-radius:8px;padding:9px;font-size:12px;cursor:pointer" onclick="confirmDeleteData()">🗑 Delete my data</button>
+    </div>`;
+  menu.classList.remove('hidden');
+}
+
+async function confirmDeleteData() {
+  if (!confirm('This permanently deletes all your training data from the server. Your local data stays intact. Are you sure?')) return;
+  if (!currentUser) return;
+  await Promise.all([
+    sb.from('session_feedback').delete().eq('user_id', currentUser.id),
+    sb.from('workout_data').delete().eq('user_id', currentUser.id),
+    sb.from('training_state').delete().eq('user_id', currentUser.id),
+  ]);
+  document.getElementById('profileMenu').classList.add('hidden');
+  alert('Server data deleted.');
+}
+
+// ── Setup wizard ─────────────────────────────────────────────────────────────
+
+let wizardSyncMethod = 'intervals_icu';
+
+function showWizard() {
+  // Pre-fill from existing profile if available
+  if (userProfile) {
+    document.getElementById('wzName').value = userProfile.name || '';
+    document.getElementById('wzAge').value  = userProfile.age  || '';
+    document.getElementById('wzGoal').value = userProfile.goal_time_min || '';
+    document.getElementById('wzRaceDate').value  = userProfile.race_date  || '2026-07-05';
+    document.getElementById('wzPlanStart').value = userProfile.plan_start || '2026-05-18';
+    document.getElementById('wzIcuId').value  = userProfile.intervals_icu_id  || '';
+    document.getElementById('wzIcuKey').value = userProfile.intervals_icu_key || '';
+    wizardSyncMethod = userProfile.sync_method || 'intervals_icu';
+    document.querySelectorAll('.sync-opt').forEach(el => {
+      el.classList.toggle('selected', el.dataset.method === wizardSyncMethod);
+    });
+    document.getElementById('intervalsFields').style.display = wizardSyncMethod === 'intervals_icu' ? 'block' : 'none';
+  }
+  setWizardStep(0);
+  document.getElementById('wizardOverlay').classList.remove('hidden');
+}
+
+function setWizardStep(n) {
+  document.querySelectorAll('.wizard-step').forEach((el, i) => el.classList.toggle('active', i === n));
+  document.querySelectorAll('.wizard-dot').forEach((el, i) => el.classList.toggle('done', i <= n));
+}
+
+function wizardNext(step) {
+  if (step === 0) {
+    const name = document.getElementById('wzName')?.value?.trim();
+    if (!name) { alert('Please enter your name.'); return; }
+  }
+  setWizardStep(step + 1);
+}
+
+function selectSyncMethod(el) {
+  document.querySelectorAll('.sync-opt').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
+  wizardSyncMethod = el.dataset.method;
+  document.getElementById('intervalsFields').style.display = wizardSyncMethod === 'intervals_icu' ? 'block' : 'none';
+}
+
+async function wizardFinish() {
+  if (!currentUser) { document.getElementById('wizardOverlay').classList.add('hidden'); return; }
+
+  const profile = {
+    id:               currentUser.id,
+    name:             document.getElementById('wzName')?.value?.trim() || '',
+    age:              parseInt(document.getElementById('wzAge')?.value) || null,
+    goal_time_min:    parseInt(document.getElementById('wzGoal')?.value) || 90,
+    race_date:        document.getElementById('wzRaceDate')?.value || '2026-07-05',
+    plan_start:       document.getElementById('wzPlanStart')?.value || '2026-05-18',
+    sync_method:      wizardSyncMethod,
+    intervals_icu_id: document.getElementById('wzIcuId')?.value?.trim() || null,
+    intervals_icu_key:document.getElementById('wzIcuKey')?.value?.trim() || null,
+    updated_at:       new Date().toISOString(),
+  };
+
+  await sb.from('profiles').upsert(profile, { onConflict: 'id' });
+  userProfile = profile;
+  document.getElementById('wizardOverlay').classList.add('hidden');
+
+  // If intervals.icu selected and credentials provided, do initial sync
+  if (wizardSyncMethod === 'intervals_icu' && profile.intervals_icu_id && profile.intervals_icu_key) {
+    syncIntervalsIcu();
+  }
+
+  renderUserHeader();
+  render();
+}
+
+// ── Intervals.icu sync ───────────────────────────────────────────────────────
+// Cloudflare Worker URL — update after deploying worker
+const INTERVALS_WORKER_URL = 'https://hyrox-intervals-proxy.YOUR-SUBDOMAIN.workers.dev';
+
+async function syncIntervalsIcu() {
+  if (!userProfile?.intervals_icu_id || !userProfile?.intervals_icu_key) return;
+
+  try {
+    const res = await fetch(INTERVALS_WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        athleteId: userProfile.intervals_icu_id,
+        apiKey: userProfile.intervals_icu_key,
+        limit: 50,
+      }),
+    });
+
+    if (!res.ok) return;
+    const activities = await res.json();
+    if (!Array.isArray(activities)) return;
+
+    // Match each activity to a session date
+    let matched = 0;
+    for (const act of activities) {
+      const dateStr = act.start_date_local?.slice(0, 10);
+      if (!dateStr || !SESSIONS[dateStr] || SESSIONS[dateStr].rest) continue;
+
+      const data = {
+        source:      'intervals_icu',
+        avgPaceSec:  act.moving_time && act.distance ? (act.moving_time / (act.distance / 1000)) : null,
+        avgHR:       act.average_heartrate || null,
+        distanceM:   act.distance || null,
+        name:        act.name || '',
+        type:        act.type || '',
+      };
+
+      state.workoutData[dateStr] = data;
+      await pushWorkoutData(dateStr, data);
+      matched++;
+    }
+
+    saveLocalState(state);
+    if (matched > 0) render();
+  } catch (e) {
+    console.warn('Intervals.icu sync failed:', e);
+  }
+}
 
 let state = loadState();
 // state = { completions: {dateStr: 'done'|'skipped'}, feedback: {dateStr: {...}}, paceAdj: {week: seconds} }
@@ -1418,6 +1799,7 @@ function saveFeedback() {
     ...(isSim && { actual_run_pace: simPaceRaw, actual_run_pace_sec: actualRunPaceSec, station_rpe: stationRpe }),
   };
   saveState(state);
+  if (currentUser) pushFeedback(viewDate, state.feedback[viewDate]);
   recomputePaceAdj(week);
   closeModal();
   render();
@@ -1961,7 +2343,9 @@ document.getElementById('feedbackModal').addEventListener('click', function(e) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 if (getApiKey()) document.getElementById('apiKeyBtn').textContent = '🔑 Claude API key — ✓ saved';
-render();
+
+// Initialise auth then render (auth state listener calls render on change)
+initAuth().then(() => render());
 
 // ── Google Calendar / ICS export ──────────────────────────────────────────────
 
@@ -2091,5 +2475,143 @@ function downloadICS() {
   if (btn) { btn.textContent = '✓ File ready — check your Downloads or Calendar prompt'; btn.style.background = 'var(--done)'; btn.style.color = '#111'; }
 }
 </script>
+
+<!-- ── Auth overlay ── -->
+<div class="auth-overlay hidden" id="authOverlay">
+  <div class="auth-box">
+    <!-- Login form -->
+    <div id="authLogin">
+      <h2>Welcome back</h2>
+      <p class="auth-sub">Sign in to sync your training across devices</p>
+      <div class="auth-error" id="loginError"></div>
+      <input class="auth-input" id="loginEmail" type="email" placeholder="Email address" autocomplete="email">
+      <input class="auth-input" id="loginPassword" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="auth-btn" onclick="handleLogin()">Sign in</button>
+      <div class="auth-link">No account? <a onclick="switchToSignup()">Create one free</a></div>
+      <div class="auth-link" style="margin-top:6px"><a onclick="handleForgotPassword()">Forgot password?</a></div>
+    </div>
+    <!-- Signup form -->
+    <div id="authSignup" style="display:none">
+      <h2>Join Hyrox Coach</h2>
+      <p class="auth-sub">Your training data syncs across all your devices</p>
+      <div class="auth-error" id="signupError"></div>
+      <input class="auth-input" id="signupName" type="text" placeholder="Your name" autocomplete="name">
+      <input class="auth-input" id="signupEmail" type="email" placeholder="Email address" autocomplete="email">
+      <input class="auth-input" id="signupPassword" type="password" placeholder="Password (min 8 chars)" autocomplete="new-password">
+      <button class="auth-btn" onclick="handleSignup()">Create account</button>
+      <div class="auth-link">Already have an account? <a onclick="switchToLogin()">Sign in</a></div>
+    </div>
+    <div style="text-align:center;margin-top:16px">
+      <a onclick="closeAuthOverlay()" style="font-size:12px;color:var(--muted);cursor:pointer">Continue without account →</a>
+    </div>
+  </div>
+</div>
+
+<!-- ── Setup wizard ── -->
+<div class="wizard-overlay hidden" id="wizardOverlay">
+  <div class="wizard-box">
+    <div class="wizard-progress">
+      <div class="wizard-dot done" id="wd0"></div>
+      <div class="wizard-dot" id="wd1"></div>
+      <div class="wizard-dot" id="wd2"></div>
+    </div>
+
+    <!-- Step 1: Profile -->
+    <div class="wizard-step active" id="wizStep0">
+      <h2>Let's set up your profile</h2>
+      <p class="wizard-sub">This personalises your pace targets and race projection.</p>
+      <div class="wizard-field">
+        <label class="wizard-label">Your name</label>
+        <input class="auth-input" id="wzName" type="text" placeholder="e.g. Koobie">
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Age</label>
+        <input class="auth-input" id="wzAge" type="number" placeholder="e.g. 32" min="16" max="80">
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Goal finish time (minutes)</label>
+        <input class="auth-input" id="wzGoal" type="number" placeholder="e.g. 90" min="50" max="180">
+      </div>
+      <button class="wizard-next" onclick="wizardNext(0)">Next →</button>
+    </div>
+
+    <!-- Step 2: Race date -->
+    <div class="wizard-step" id="wizStep1">
+      <h2>Your race details</h2>
+      <p class="wizard-sub">When is your Hyrox race?</p>
+      <div class="wizard-field">
+        <label class="wizard-label">Race date</label>
+        <input class="auth-input" id="wzRaceDate" type="date" value="2026-07-05">
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Plan start date</label>
+        <input class="auth-input" id="wzPlanStart" type="date" value="2026-05-18">
+      </div>
+      <button class="wizard-next" onclick="wizardNext(1)">Next →</button>
+    </div>
+
+    <!-- Step 3: Sync method -->
+    <div class="wizard-step" id="wizStep2">
+      <h2>How will you log workouts?</h2>
+      <p class="wizard-sub">You can change this any time in your profile.</p>
+      <div class="sync-options" id="syncOptions">
+        <div class="sync-opt selected" data-method="intervals_icu" onclick="selectSyncMethod(this)">
+          <div class="so-icon">⚡</div>
+          <div>
+            <div class="so-title">Auto-sync via Intervals.icu</div>
+            <div class="so-desc">Connects Garmin or Apple Watch automatically. Best experience.</div>
+          </div>
+        </div>
+        <div class="sync-opt" data-method="file_upload" onclick="selectSyncMethod(this)">
+          <div class="so-icon">📁</div>
+          <div>
+            <div class="so-title">Upload FIT / TCX / GPX file</div>
+            <div class="so-desc">Export from Garmin Connect or other apps and drop the file in.</div>
+          </div>
+        </div>
+        <div class="sync-opt" data-method="screenshot" onclick="selectSyncMethod(this)">
+          <div class="so-icon">📸</div>
+          <div>
+            <div class="so-title">Screenshot upload</div>
+            <div class="so-desc">Take a photo of your watch or app screen — AI reads the data.</div>
+          </div>
+        </div>
+        <div class="sync-opt" data-method="manual" onclick="selectSyncMethod(this)">
+          <div class="so-icon">✏️</div>
+          <div>
+            <div class="so-title">Manual splits entry</div>
+            <div class="so-desc">Type in your splits after each session. No app or watch needed.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Intervals.icu fields (shown only when intervals_icu selected) -->
+      <div id="intervalsFields" style="margin-top:14px">
+        <div class="wizard-field">
+          <label class="wizard-label">Intervals.icu Athlete ID <span style="font-weight:400;color:var(--muted)">(Settings → General → Athlete ID)</span></label>
+          <input class="auth-input" id="wzIcuId" type="text" placeholder="e.g. i12345">
+        </div>
+        <div class="wizard-field">
+          <label class="wizard-label">Intervals.icu API Key <span style="font-weight:400;color:var(--muted)">(Settings → Developer)</span></label>
+          <input class="auth-input" id="wzIcuKey" type="password" placeholder="API key">
+        </div>
+      </div>
+
+      <button class="wizard-next" onclick="wizardFinish()">Start training →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── User profile menu ── -->
+<div class="auth-overlay hidden" id="profileMenu" style="align-items:flex-start;padding-top:70px">
+  <div class="auth-box" style="max-width:320px">
+    <div id="profileMenuBody"></div>
+    <button class="auth-btn" style="background:transparent;border:1.5px solid var(--border);color:var(--text);margin-top:10px" onclick="handleSignOut()">Sign out</button>
+    <div style="text-align:center;margin-top:10px">
+      <a onclick="document.getElementById('profileMenu').classList.add('hidden')" style="font-size:12px;color:var(--muted);cursor:pointer">Close</a>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
