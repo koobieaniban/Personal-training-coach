@@ -934,8 +934,14 @@ async function handleSignup() {
   errEl.style.display = 'none';
   if (!name || !email || !pass) { errEl.textContent = 'Please fill in all fields.'; errEl.style.display = 'block'; return; }
   if (pass.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display = 'block'; return; }
-  const { error } = await sb.auth.signUp({ email, password: pass, options: { data: { name } } });
+  const { data, error } = await sb.auth.signUp({ email, password: pass, options: { data: { name } } });
   if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+  if (!data.session) {
+    errEl.style.display = 'block';
+    errEl.style.color = '#4ade80';
+    errEl.textContent = 'Check your email and click the confirmation link, then sign in.';
+    return;
+  }
   closeAuthOverlay();
   showWizard();
 }
