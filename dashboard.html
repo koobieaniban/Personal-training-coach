@@ -106,6 +106,23 @@
   .rpe-btn.sel-ok   { border-color: var(--accent); color: var(--accent); background: #1e2510; }
   .rpe-btn.sel-hard { border-color: #ffb347; color: #ffb347; background: #2a1a05; }
   .rpe-btn.sel-max  { border-color: var(--skipped); color: var(--skipped); background: #2a0f0f; }
+  /* ── Week strip navigation ── */
+  .strip-nav-wrap { display: flex; align-items: stretch; }
+  .strip-nav { flex-shrink: 0; width: 32px; background: var(--card); border: 1px solid var(--border); color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+  .strip-nav:first-child { border-radius: 10px 0 0 10px; border-right: none; }
+  .strip-nav:last-child  { border-radius: 0 10px 10px 0; border-left: none; }
+  .strip-nav:disabled { opacity: .25; cursor: default; }
+  .strip-nav:not(:disabled):active { background: var(--card2); }
+  /* ── Sim splits table ── */
+  .splits-grid { display: grid; grid-template-columns: 26px 1fr 1fr 1fr; gap: 4px 8px; align-items: center; }
+  .splits-hdr-row { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
+  .splits-data-row { padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .splits-data-row:last-child { border-bottom: none; }
+  .split-round-lbl { font-weight: 700; color: var(--accent); font-size: 12px; }
+  .split-input { background: var(--card2); border: 1.5px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: monospace; padding: 5px 3px; outline: none; text-align: center; width: 100%; box-sizing: border-box; }
+  .split-input:focus { border-color: var(--accent); }
+  .split-station-lbl { font-size: 11px; color: var(--muted); line-height: 1.3; }
+  .split-actual-tag { display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 4px; background: #0d2018; color: var(--done); letter-spacing: .04em; margin-left: 4px; }
 
   /* ── Blocks ── */
   .session-body { padding: 0 16px 16px; }
@@ -236,7 +253,11 @@
     <div class="header-week" id="headerWeek">–</div>
   </div>
 
-  <div class="week-strip" id="weekStrip"></div>
+  <div class="strip-nav-wrap">
+    <button class="strip-nav" id="stripNavPrev" onclick="shiftWeekStrip(-1)">‹</button>
+    <div class="week-strip" id="weekStrip" style="flex:1;min-width:0"></div>
+    <button class="strip-nav" id="stripNavNext" onclick="shiftWeekStrip(1)">›</button>
+  </div>
   <div class="pace-bar" id="paceBar"></div>
   <div id="adjNotice"></div>
   <div id="wristAlert"></div>
@@ -316,6 +337,27 @@ const STATION_RACE_SEC = {
   farmers:   { c:180, t:142, s:135 },
   lunges:    { c:300, t:255, s:240 },
   wallball:  { c:360, t:315, s:300 },
+};
+
+// ── Sim distances — run segment + station distances per sim date ──────────────
+const SIM_DISTANCES = {
+  '2026-05-25': { run_m: 500,  stations: { skierg: 500,  burpee: 40, farmers: 50  } },
+  '2026-06-01': { run_m: 1000, stations: { row: 500,    sled_push: 50, skierg: 500, wallball: 25 } },
+  '2026-06-08': { run_m: 1000, stations: { skierg: 500, sled_push: 50, sled_pull: 50, burpee: 40, row: 500, farmers: 100 } },
+  '2026-06-15': { run_m: 1000, stations: { skierg: 1000, sled_push: 50, sled_pull: 50, burpee: 80, row: 1000, farmers: 200, lunges: 100, wallball: 100 } },
+  '2026-06-22': { run_m: 1000, stations: { skierg: 500, sled_push: 50, burpee: 40, row: 500, farmers: 100, wallball: 50 } },
+};
+
+// Race distances for scaling sim splits → projected race times
+const STATION_RACE_DIST = {
+  skierg: 1000, sled_push: 50, sled_pull: 50, burpee: 80,
+  row: 1000, farmers: 200, lunges: 100, wallball: 100,
+};
+
+// Units for display
+const STATION_UNITS = {
+  wallball: 'reps', burpee: 'm', skierg: 'm', row: 'm',
+  sled_push: 'm', sled_pull: 'm', farmers: 'm', lunges: 'm',
 };
 
 // Session definitions. paceRef: which pace to highlight today.
@@ -983,8 +1025,17 @@ function recomputePaceAdj(week) {
 // ── Selected view date ────────────────────────────────────────────────────────
 
 let viewDate = today();
+let weekStripOffset = 0; // 0 = current week, negative = past weeks
 
 // ── Render ────────────────────────────────────────────────────────────────────
+
+function shiftWeekStrip(delta) {
+  const todayWeek = getWeekNum(today());
+  const minOffset = 1 - todayWeek; // can go back to week 1
+  const maxOffset = 1;             // can look one week ahead
+  weekStripOffset = Math.max(minOffset, Math.min(maxOffset, weekStripOffset + delta));
+  render();
+}
 
 function render() {
   renderHeader();
@@ -1041,9 +1092,8 @@ function renderHeader() {
 }
 
 function renderWeekStrip() {
-  // Always show the two-week window that contains today
   const todayWeek = getWeekNum(today());
-  const firstWeek = Math.min(todayWeek, 5); // don't start on week 6
+  const firstWeek = Math.max(1, Math.min(todayWeek + weekStripOffset, 5));
   const strip = document.getElementById('weekStrip');
   strip.innerHTML = '';
   const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -1051,9 +1101,12 @@ function renderWeekStrip() {
   for (let w = firstWeek; w <= firstWeek + 1; w++) {
     if (w > 6) break;
     const weekStart = new Date(PLAN_START.getTime() + (w - 1) * 7 * 86400000);
-    const weekLabel = w === todayWeek ? 'This week' : w === todayWeek + 1 ? 'Next week' : `Week ${w}`;
+    let weekLabel;
+    if (w === todayWeek)     weekLabel = 'This week';
+    else if (w === todayWeek + 1) weekLabel = 'Next week';
+    else if (w < todayWeek)  weekLabel = `Week ${w} ↩`;
+    else                     weekLabel = `Week ${w}`;
 
-    // Week label divider
     strip.innerHTML += `<div class="week-divider"><span>${weekLabel}</span></div>`;
 
     for (let i = 0; i < 7; i++) {
@@ -1084,7 +1137,14 @@ function renderWeekStrip() {
     }
   }
 
-  // Scroll so today is visible
+  // Update nav button states
+  const minOffset = 1 - todayWeek;
+  const maxOffset = 1;
+  const prev = document.getElementById('stripNavPrev');
+  const next = document.getElementById('stripNavNext');
+  if (prev) prev.disabled = weekStripOffset <= minOffset;
+  if (next) next.disabled = weekStripOffset >= maxOffset;
+
   requestAnimationFrame(() => {
     const active = strip.querySelector('.today, .active');
     if (active) active.scrollIntoView({ inline: 'center', behavior: 'smooth', block: 'nearest' });
@@ -1289,10 +1349,38 @@ function openFeedback() {
 
   const isSim = session.type === 'sim';
   const simStations = isSim ? (SIM_STATIONS[viewDate] || []) : [];
-  const simPaceVal = existing.actual_run_pace || '';
+  const simDist = SIM_DISTANCES[viewDate] || {};
+  const existingSplits = existing.splits || [];
+
+  // Per-round splits table (replaces single avg-pace input)
+  const splitsHtml = isSim && simStations.length ? (() => {
+    const runM = simDist.run_m || 1000;
+    const rows = simStations.map((k, i) => {
+      const s = existingSplits[i] || {};
+      const stDist = simDist.stations?.[k] || STATION_RACE_DIST[k] || '';
+      const unit = STATION_UNITS[k] || 'm';
+      const stLabel = `${STATION_LABELS[k]}<br><span style="font-size:10px;color:var(--muted)">${stDist}${unit}</span>`;
+      return `<div class="splits-grid splits-data-row">
+        <span class="split-round-lbl">R${i+1}</span>
+        <input class="split-input" id="run-split-${i}" type="text" placeholder="–:––" maxlength="5" value="${s.run_time||''}">
+        <span class="split-station-lbl">${stLabel}</span>
+        <input class="split-input" id="st-split-${i}-${k}" type="text" placeholder="–:––" maxlength="5" value="${s.station_time||''}">
+      </div>`;
+    }).join('');
+    return `<div class="q-block">
+      <span class="q-label">Splits per round <span style="font-size:11px;color:var(--muted);font-weight:400">(MM:SS — leave blank if not tracked)</span></span>
+      <div style="margin-top:8px">
+        <div class="splits-grid splits-hdr-row">
+          <span></span><span>Run (${runM}m)</span><span>Station</span><span>Time</span>
+        </div>
+        ${rows}
+      </div>
+    </div>`;
+  })() : '';
+
   const simRpeHtml = simStations.length ? `
     <div class="q-block">
-      <span class="q-label">Station effort — how hard was each? (1 easy → 5 maxed out)</span>
+      <span class="q-label">Station effort — how hard did each feel? (1 easy → 5 maxed)</span>
       <div style="margin-top:6px">
         ${simStations.map(k => {
           const cur = (existing.station_rpe || {})[k] || 0;
@@ -1306,12 +1394,7 @@ function openFeedback() {
         }).join('')}
       </div>
     </div>` : '';
-  const simPaceHtml = isSim ? `
-    <div class="q-block">
-      <span class="q-label">Average run pace per km (e.g. 5:45)</span>
-      <input id="simPaceInput" type="text" placeholder="5:45" value="${simPaceVal}"
-        style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;padding:10px 12px;font-family:monospace;outline:none">
-    </div>` : '';
+  const simPaceHtml = ''; // replaced by per-round splits table above
 
   document.getElementById('modalBody').innerHTML = `
     <div class="q-block">
@@ -1319,6 +1402,7 @@ function openFeedback() {
       <div class="feel-row">${feelHtml}</div>
     </div>
     ${paceHtml}
+    ${splitsHtml}
     ${simPaceHtml}
     ${simRpeHtml}
     ${kneeHtml}
