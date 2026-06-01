@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hyrox Training · July 5</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root {
     --bg:        #0f1117;
@@ -787,7 +787,7 @@ const SESSIONS = {
 
 const SUPABASE_URL = 'https://bphjvdtlcuqnewyykfhk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwaGp2ZHRsY3VxbmV3eXlrZmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzczNzksImV4cCI6MjA5NTkxMzM3OX0.tB2xn3EIRy8rW078-0QFpu8bmxyLw95r-MqPoxkYFKY';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = (window.supabase || window.supabase_js)?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) || null;
 
 let currentUser = null;
 let userProfile  = null;
@@ -807,7 +807,7 @@ function saveState(s) {
 // ── Supabase data layer ───────────────────────────────────────────────────────
 
 async function pushTrainingState(s) {
-  if (!currentUser) return;
+  if (!currentUser || !sb) return;
   await sb.from('training_state')
     .upsert({ user_id: currentUser.id, completions: s.completions || {}, pace_adj: s.paceAdj || {}, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
 }
@@ -875,6 +875,7 @@ async function loadStateFromSupabase() {
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 async function initAuth() {
+  if (!sb) { render(); return; }
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user) {
     currentUser = session.user;
