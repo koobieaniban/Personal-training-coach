@@ -66,6 +66,14 @@ ALTER TABLE public.training_state  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.session_feedback ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workout_data    ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies before recreating (safe to re-run)
+DROP POLICY IF EXISTS "Own profile select"  ON public.profiles;
+DROP POLICY IF EXISTS "Own profile insert"  ON public.profiles;
+DROP POLICY IF EXISTS "Own profile update"  ON public.profiles;
+DROP POLICY IF EXISTS "Own training state"  ON public.training_state;
+DROP POLICY IF EXISTS "Own feedback"        ON public.session_feedback;
+DROP POLICY IF EXISTS "Own workout data"    ON public.workout_data;
+
 -- Profiles
 CREATE POLICY "Own profile select" ON public.profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Own profile insert" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
