@@ -198,15 +198,8 @@
   .rest-card h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
   .rest-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
 
-  /* ── Wrist alert ── */
-  .wrist-alert { margin: 0 16px 12px; background: #1e1510; border: 1px solid #5a3a10; border-radius: 10px; padding: 11px 14px; display: flex; gap: 10px; align-items: flex-start; }
-  .wrist-alert .wa-icon { font-size: 18px; flex-shrink: 0; }
-  .wrist-alert .wa-text { font-size: 13px; line-height: 1.5; color: #ffcc80; }
-  .wrist-alert .wa-text strong { color: #ffb347; }
-
   /* ── Knee red flag ── */
   .red-flag-btn { margin: 0 16px 12px; width: calc(100% - 32px); background: transparent; border: 1.5px solid var(--red-flag); color: var(--red-flag); border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
-  .wrist-btn { margin: 0 16px 12px; width: calc(100% - 32px); background: transparent; border: 1.5px solid #5a3a10; color: #ffb347; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 700; cursor: pointer; }
 
   /* ── Export ── */
   .export-btn { margin: 0 16px; width: calc(100% - 32px); background: var(--card2); border: 1px solid var(--border); color: var(--muted); border-radius: 10px; padding: 10px; font-size: 13px; cursor: pointer; }
@@ -260,7 +253,7 @@
   </div>
   <div class="pace-bar" id="paceBar"></div>
   <div id="adjNotice"></div>
-  <div id="wristAlert"></div>
+
   <div id="statsCard"></div>
   <div id="sessionArea"></div>
   <div id="analysisArea"></div>
@@ -270,8 +263,6 @@
   <button class="export-btn" style="margin:0 16px;width:calc(100% - 32px);background:#1e1e10;border-color:#ffb347;color:#ffb347;font-weight:700" onclick="showRaceProjection()">📊 Race pace projection</button>
   <div style="height:8px"></div>
   <button class="red-flag-btn" onclick="showRedFlags()">⚠ Knee red flags — know when to stop</button>
-  <div style="height:8px"></div>
-  <button class="wrist-btn" onclick="showWristMods()">🤚 De Quervain's wrist modifications</button>
   <div style="height:8px"></div>
   <button class="export-btn" onclick="exportFeedback()">↓ Export feedback JSON (for analyze_garmin.py)</button>
   <div style="height:8px"></div>
@@ -385,7 +376,7 @@ const SESSIONS = {
       { title: 'Warm-up (8 min)', items: ['2 min jumping jacks', 'Band Ski Pull-down ×20 — anchor band overhead (door frame / banister), double-arm pull to hips, hinge throughout · this is the SkiErg pattern'] },
       { title: 'Knee Block — Phase 1 (12 min, 3 rounds)', knee: true, items: ['TKE (band) ×20 each leg · Full lockout, 1s pause', 'Short Arc Quad ×15 each · 30° → full lock, 2s hold', 'Straight Leg Raise ×15 each · 3s lower', 'Clamshell (band) ×20 each side · keep hips stacked', 'Single-leg Balance 45s each · eyes open', 'Heel Slide ×15 each · slide to comfortable end range only'] },
       { title: 'Block A — Posterior Chain (3 rounds, 60s rest)', items: ['DB Goblet Squat 3×12 @ 16–20kg · hold one DB vertically at chest', 'DB Romanian Deadlift 3×10 @ 2×16–20kg · hinge at hip, same movement as barbell RDL', 'Step-up to chair / couch / stairs 3×10 each · add one 8–10kg DB if bodyweight feels easy', 'Copenhagen Plank 3×20s each · rest top foot on chair seat'] },
-      { title: 'Block B — Cardio + Core (3 rounds, 90s rest)', items: ['Band Ski Pull-down 2×20 reps — anchor high, double-arm pull to hips · right wrist: hook grip, no thumb wrap', 'DB Farmers Walk 50m @ 2×20–22kg · walk the length of your space and back · right wrist: use strap looped through handle', 'Hollow Body Hold 30s · lower back pressed flat, arms overhead'] },
+      { title: 'Block B — Cardio + Core (3 rounds, 90s rest)', items: ['Band Ski Pull-down 2×20 reps — anchor high, double-arm pull to hips', 'DB Farmers Walk 50m @ 2×20–22kg · walk the length of your space and back', 'Hollow Body Hold 30s · lower back pressed flat, arms overhead'] },
       { title: 'Station Practice', items: ['Burpee Broad Jumps: 4 sets × 10 · chest-to-floor → explosive jump forward → soft-knee landing · right hand: fist position on floor'] },
       { title: 'Cool-down', items: ['Full knee recovery protocol (8 min)'] },
     ],
@@ -411,7 +402,7 @@ const SESSIONS = {
     paceRef: 'easy', kneePhase: 'activation',
     blocks: [
       { title: 'Warm-up (15 min)', items: ['Easy 1km jog', 'Knee activation (5 min)', 'Dynamic drills: leg swings · hip circles · A-skips × 2×20m'] },
-      { title: 'Main — 3 rounds, 3 min rest · transition ≤30s', items: ['Round 1: 500m @ 5:40/km → SkiErg 500m · loop wrist straps, open-palm hook grip, right wrist neutral', 'Round 2: 500m @ 5:40/km → 12 Burpee Broad Jumps · right hand fist position on floor', 'Round 3: 500m @ 5:40/km → Farmers Carry 50m @ 2×20kg · right wrist: lifting strap looped through handle'] },
+      { title: 'Main — 3 rounds, 3 min rest · transition ≤30s', items: ['Round 1: 500m @ 5:40/km → SkiErg 500m', 'Round 2: 500m @ 5:40/km → 12 Burpee Broad Jumps', 'Round 3: 500m @ 5:40/km → Farmers Carry 50m @ 2×20kg'] },
       { title: 'Cool-down', items: ['Easy 500m jog · full knee recovery protocol'] },
     ],
     note: 'Technique focus, not pace. First time on a real SkiErg — learn the hinge and arm extension. The run→station habit is what matters this week.',
@@ -453,8 +444,8 @@ const SESSIONS = {
     blocks: [
       { title: 'Warm-up', items: ['500m SkiErg easy'] },
       { title: 'Knee Block — Phase 1 (12 min, 3 rounds)', knee: true, items: ['TKE (band) ×20 each leg · Full lockout, 1s pause', 'Short Arc Quad ×15 each · 30° → full lock, 2s hold', 'Straight Leg Raise ×15 each · 3s lower', 'Clamshell (band) ×20 each side', 'Single-leg Balance 45s each', 'Heel Slide ×15 each'] },
-      { title: 'Block A — Posterior Chain (4 rounds, 75s rest)', items: ['Back Squat 4×8 @ 40–50kg', 'Barbell Hip Thrust 4×12 @ 50–60kg', 'Walking Lunges 4×20 steps (bodyweight → +5kg DBs)', 'DB Bent-over Row 3×10 each arm @ 20–24kg · right wrist: use strap'] },
-      { title: 'Block B — Hyrox Stations (3 rounds, 2 min rest)', items: ['SkiErg 500m · build pace each round · right wrist: loop straps', 'Wall Balls 20 reps @ 6kg to 3.05m target', 'Farmers Carry 100m @ 2×20kg · right wrist: use strap'] },
+      { title: 'Block A — Posterior Chain (4 rounds, 75s rest)', items: ['Back Squat 4×8 @ 40–50kg', 'Barbell Hip Thrust 4×12 @ 50–60kg', 'Walking Lunges 4×20 steps (bodyweight → +5kg DBs)', 'DB Bent-over Row 3×10 each arm @ 20–24kg'] },
+      { title: 'Block B — Hyrox Stations (3 rounds, 2 min rest)', items: ['SkiErg 500m · build pace each round', 'Wall Balls 20 reps @ 6kg to 3.05m target', 'Farmers Carry 100m @ 2×20kg'] },
       { title: 'Sled Intro', items: ['3 × 50m sled push @ empty sled · low hips, drive with legs', '3 × 50m sled pull @ empty sled · hand-over-hand rope technique'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
@@ -516,7 +507,7 @@ const SESSIONS = {
     blocks: [
       { title: 'Warm-up', items: ['500m SkiErg'] },
       { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['TKE (heavier band) ×20 each leg', 'Step-Down (eccentric) ×12 each leg · 20–30cm box, 3–4 count lower', 'Single-leg Glute Bridge ×12 each · keep hips level', 'Nordic Hamstring Curl (assisted) ×8 · 3–4 count lower, assist up', 'Lateral Band Walk ×20 steps each direction', 'Wall Sit 45s', 'Single-leg Calf Raise ×15 each · 3 count eccentric'] },
-      { title: 'Block A — Strength (3 rounds, 90s rest)', items: ['Back Squat 3×6 @ 60–70% 1RM', 'Romanian Deadlift 3×8 @ 60–70kg', 'Single-leg Step-up + 10kg DBs 3×8 each', 'Barbell Hip Thrust 3×10 @ 70kg', 'Barbell Bent-over Row 3×10 @ 50–60kg · right wrist: use strap'] },
+      { title: 'Block A — Strength (3 rounds, 90s rest)', items: ['Back Squat 3×6 @ 60–70% 1RM', 'Romanian Deadlift 3×8 @ 60–70kg', 'Single-leg Step-up + 10kg DBs 3×8 each', 'Barbell Hip Thrust 3×10 @ 70kg', 'Barbell Bent-over Row 3×10 @ 50–60kg'] },
       { title: 'Block B — Hyrox Circuit (2 rounds, 5 min rest)', items: ['SkiErg 500m', 'Sled Push 50m @ 80–100kg (build toward race weight 152kg)', 'Sled Pull 50m @ 60–75kg (build toward race weight 103kg)', 'Burpee Broad Jumps 40m (~20 jumps)'] },
       { title: 'Block C — Lunge → Wall Ball Primer (2 rounds, 3 min rest)', items: ['Sandbag Lunges 20m @ 20kg — straight into:', 'Wall Balls 20 reps @ 6kg · first taste of this quad-double'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
@@ -579,7 +570,7 @@ const SESSIONS = {
     blocks: [
       { title: 'Warm-up', items: ['500m row easy'] },
       { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['This is your heaviest training week — the knee block is not optional', 'Same Phase 2 protocol · focus on step-down quality and nordic curl'] },
-      { title: 'Block A — Strength (3 rounds)', items: ['Goblet Squat 3×10 @ 24kg KB', 'Romanian Deadlift 3×8 @ 70–75kg', 'Barbell Hip Thrust 3×10 @ 80kg', 'Copenhagen Plank 3×25s each', 'Barbell Bent-over Row 3×10 @ 55–65kg · right wrist: use strap'] },
+      { title: 'Block A — Strength (3 rounds)', items: ['Goblet Squat 3×10 @ 24kg KB', 'Romanian Deadlift 3×8 @ 70–75kg', 'Barbell Hip Thrust 3×10 @ 80kg', 'Copenhagen Plank 3×25s each', 'Barbell Bent-over Row 3×10 @ 55–65kg'] },
       { title: 'Block B — Full Hyrox Circuit (2 rounds, 6 min rest)', items: ['SkiErg 1000m', 'Sled Push 50m @ 120–140kg (target 152kg)', 'Sled Pull 50m @ 85–95kg (target 103kg)', 'Burpee Broad Jumps 80m (full race distance)', 'Row 1000m @ 2:00–2:05/500m split', 'Farmers Carry 200m @ 2×24kg', 'Sandbag Lunges 100m @ 20kg', 'Wall Balls 50 reps @ 6kg'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
@@ -742,29 +733,7 @@ const SESSIONS = {
   },
 };
 
-// ── De Quervain's wrist modifications per session type ───────────────────────
-// Right wrist only. These are injected as a notice on any session with grip load.
 
-const WRIST_MODS = {
-  skierg:   { label: 'SkiErg', mod: 'Loop the straps around your wrists rather than gripping the handles. Open-palm or hook grip only — no thumb wrap. Keep wrist neutral throughout the pull.' },
-  sled_pull:{ label: 'Sled Pull', mod: 'Feed the rope through a wrist loop or lasso it around your right forearm rather than gripping. Use an overhand hook — not a pinch grip. Left hand pulls harder to compensate.' },
-  sled_push:{ label: 'Sled Push', mod: 'Push through the heel of your palm, not fingers. Keep wrist locked in neutral extension. This should be low pain — stop if it isn\'t.' },
-  burpee:   { label: 'Burpee Broad Jumps', mod: 'Use push-up handles if available (takes wrist out of extension). Otherwise use fist position on the floor with right hand to keep wrist neutral. Land and push off left-dominant.' },
-  row:      { label: 'Rowing', mod: 'Use a rowing strap on the right hand. Hook grip, not full grip. Keep wrist flat — don\'t let it curl at the finish. Straps are allowed in training and race.' },
-  farmers:  { label: 'Farmers Carry', mod: 'Use a lifting strap on the right hand — loop it through the KB handle so the load is on your forearm, not your grip. This is the highest-risk station. If strap unavailable, carry left-hand normal, right-hand racked (KB on forearm).' },
-  lunges:   { label: 'Sandbag Lunges', mod: 'Use a front-rack cross-arm position: forearms crossed, sandbag resting on forearms and upper chest, hands NOT gripping the bag. Zero wrist load.' },
-  wallball: { label: 'Wall Balls', mod: 'Catch with forearms/palms, not fingers — like a volleyball bump. Keep thumb away from ball contact. Use wrist guard/KT tape during training. This is the trickiest station for De Quervain\'s — practise the catch technique.' },
-  rdl:      { label: 'Romanian Deadlift', mod: 'Use a lifting strap on the right hand. No mixed grip. Keep wrist neutral throughout.' },
-  goblet:   { label: 'Goblet Squat / KB work', mod: 'Hold KB with palms cupped under the bell, NOT with fingers/thumb wrap. Or substitute barbell front squat with wrist wraps.' },
-  db:       { label: 'Dumbbell work', mod: 'Use a neutral (hammer) grip where possible on the right. Avoid supinated grip under load. Use wrist wrap for support.' },
-};
-
-// Map session dates → relevant wrist mods (De Quervain's protocol ends after 31 May)
-const SESSION_WRIST_MODS = {
-  '2026-05-21': ['skierg','rdl','goblet'],
-  '2026-05-25': ['skierg','farmers','burpee'],
-  '2026-05-29': ['skierg','rdl','goblet','sled_push','sled_pull','wallball','farmers'],
-};
 
 // ── State management ──────────────────────────────────────────────────────────
 
@@ -1042,45 +1011,11 @@ function render() {
   renderWeekStrip();
   renderPaceBar();
   renderAdjNotice();
-  renderWristAlert();
   renderSession();
   renderAnalysisCard();
   renderSimAnalysis();
 }
 
-function renderWristAlert() {
-  const el = document.getElementById('wristAlert');
-  const mods = SESSION_WRIST_MODS[viewDate];
-  if (!mods || !mods.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="wrist-alert">
-    <div class="wa-icon">🤚</div>
-    <div class="wa-text"><strong>De Quervain's — right wrist mods today:</strong> ${mods.map(k => WRIST_MODS[k]?.label).join(' · ')}. Tap the wrist button below for full details.</div>
-  </div>`;
-}
-
-function showWristMods() {
-  const mods = SESSION_WRIST_MODS[viewDate];
-  document.getElementById('modalTitle').textContent = '🤚 De Quervain\'s Modifications';
-  document.getElementById('modalSub').textContent = 'Right wrist only — applies to today\'s session';
-
-  const items = mods && mods.length
-    ? mods.map(k => WRIST_MODS[k]).filter(Boolean)
-    : Object.values(WRIST_MODS);
-
-  document.getElementById('modalBody').innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
-      ${items.map(m => `
-        <div style="padding:12px;background:#1e1510;border-radius:8px;border:1px solid #5a3a10">
-          <div style="font-weight:700;color:#ffb347;margin-bottom:5px;font-size:13px">${m.label}</div>
-          <div style="font-size:13px;color:#ffcc80;line-height:1.55">${m.mod}</div>
-        </div>`).join('')}
-    </div>
-    <div style="background:#1a1a2e;border-radius:8px;padding:12px 14px;font-size:13px;color:#8bb8ff;line-height:1.6">
-      💡 <strong>Race day:</strong> Wrist straps and guards are permitted in Hyrox Open. Tape with KT tape or rigid sports tape before the race. Inform officials at check-in.<br><br>
-      💡 <strong>Between sessions:</strong> Ice 10–15 min after any grip-heavy session. Wear a splint at night. NSAIDs if prescribed by your physio.
-    </div>`;
-  document.getElementById('feedbackModal').classList.add('open');
-}
 
 function renderHeader() {
   document.getElementById('daysToRace').textContent = daysToRace();
