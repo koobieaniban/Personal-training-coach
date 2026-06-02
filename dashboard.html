@@ -1053,7 +1053,13 @@ function selectSyncMethod(el) {
 }
 
 async function wizardFinish() {
-  if (!currentUser) { document.getElementById('wizardOverlay').classList.add('hidden'); return; }
+  const btn = document.querySelector('#wizardOverlay .wizard-next:last-child');
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+
+  if (!currentUser) {
+    if (btn) { btn.textContent = 'Not signed in — please sign in first'; btn.disabled = false; }
+    return;
+  }
 
   const profile = {
     id:               currentUser.id,
@@ -1068,11 +1074,15 @@ async function wizardFinish() {
     updated_at:       new Date().toISOString(),
   };
 
-  await sb.from('profiles').upsert(profile, { onConflict: 'id' });
+  const { error } = await sb.from('profiles').upsert(profile, { onConflict: 'id' });
+  if (error) {
+    if (btn) { btn.textContent = 'Error: ' + error.message; btn.disabled = false; }
+    return;
+  }
+
   userProfile = profile;
   document.getElementById('wizardOverlay').classList.add('hidden');
 
-  // If intervals.icu selected and credentials provided, do initial sync
   if (wizardSyncMethod === 'intervals_icu' && profile.intervals_icu_id && profile.intervals_icu_key) {
     syncIntervalsIcu();
   }
