@@ -1053,11 +1053,12 @@ function selectSyncMethod(el) {
 }
 
 async function wizardFinish() {
-  const btn = document.querySelector('#wizardOverlay .wizard-next:last-child');
+  const btn = document.getElementById('startTrainingBtn');
   if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
 
   if (!currentUser) {
-    if (btn) { btn.textContent = 'Not signed in — please sign in first'; btn.disabled = false; }
+    alert('Not signed in. Please sign out and sign back in, then try again.');
+    if (btn) { btn.textContent = 'Start training →'; btn.disabled = false; }
     return;
   }
 
@@ -2614,7 +2615,7 @@ function downloadICS() {
         </div>
       </div>
 
-      <button class="wizard-next" onclick="wizardFinish()">Start training →</button>
+      <button class="wizard-next" id="startTrainingBtn" onclick="wizardFinish()">Start training →</button>
     </div>
   </div>
 </div>
