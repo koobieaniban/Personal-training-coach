@@ -88,6 +88,13 @@ CREATE POLICY "Own feedback" ON public.session_feedback FOR ALL USING (auth.uid(
 -- Workout data
 CREATE POLICY "Own workout data" ON public.workout_data FOR ALL USING (auth.uid() = user_id);
 
+-- ── Grant table access to authenticated users ────────────────────────────────
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles         TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.training_state   TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.session_feedback TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.workout_data     TO authenticated;
+
 -- ── Auto-create profile on signup ────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
