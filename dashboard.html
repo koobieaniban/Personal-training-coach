@@ -808,8 +808,9 @@ function saveState(s) {
 
 async function pushTrainingState(s) {
   if (!currentUser || !sb) return;
-  await sb.from('training_state')
+  const { error } = await sb.from('training_state')
     .upsert({ user_id: currentUser.id, completions: s.completions || {}, pace_adj: s.paceAdj || {}, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  if (error) console.error('pushTrainingState failed:', error.message);
 }
 
 async function pushFeedback(dateStr, feedbackObj) {
@@ -867,7 +868,7 @@ async function loadStateFromSupabase() {
       workoutData,
     };
   } catch (e) {
-    console.warn('Supabase load failed, using local state', e);
+    console.error('loadStateFromSupabase failed:', e.message);
     return null;
   }
 }
@@ -898,20 +899,21 @@ async function initAuth() {
 }
 
 async function loadUserData() {
-  // Load profile
-  const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  const { data, error: profileErr } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  if (profileErr) console.error('loadUserData profile error:', profileErr.message);
   userProfile = data;
 
-  // Load state from Supabase (source of truth when logged in)
   const remote = await loadStateFromSupabase();
   if (remote) {
     state = remote;
-    // Ensure required keys exist
     if (!state.completions) state.completions = {};
     if (!state.feedback)    state.feedback    = {};
     if (!state.paceAdj)     state.paceAdj     = {};
     if (!state.workoutData) state.workoutData  = {};
     saveLocalState(state);
+    console.log('Loaded from Supabase — completions:', Object.keys(state.completions).length, 'feedback:', Object.keys(state.feedback).length);
+  } else {
+    console.warn('loadStateFromSupabase returned null — using local state');
   }
 }
 
