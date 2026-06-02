@@ -935,7 +935,17 @@ async function loadUserData() {
 
   const remote = await loadStateFromSupabase();
   if (remote) {
-    state = remote;
+    // Merge: keep whichever has more completions (protects against empty Supabase overwriting local data)
+    const local = loadState();
+    const localCount  = Object.keys(local.completions  || {}).length;
+    const remoteCount = Object.keys(remote.completions || {}).length;
+    if (localCount > remoteCount) {
+      // Local has more data — push it up to Supabase then use it
+      state = { ...remote, completions: local.completions, paceAdj: local.paceAdj || remote.paceAdj };
+      pushTrainingState(state);
+    } else {
+      state = remote;
+    }
     if (!state.completions) state.completions = {};
     if (!state.feedback)    state.feedback    = {};
     if (!state.paceAdj)     state.paceAdj     = {};
