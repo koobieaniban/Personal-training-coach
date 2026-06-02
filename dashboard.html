@@ -875,19 +875,49 @@ async function loadStateFromSupabase() {
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
+let realtimeChannel = null;
+
+function subscribeRealtime() {
+  if (!sb || !currentUser) return;
+  if (realtimeChannel) sb.removeChannel(realtimeChannel);
+
+  realtimeChannel = sb.channel('user-sync-' + currentUser.id)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'training_state',
+      filter: `user_id=eq.${currentUser.id}`
+    }, payload => {
+      if (!payload.new) return;
+      state.completions = payload.new.completions || {};
+      state.paceAdj     = payload.new.pace_adj   || {};
+      saveLocalState(state);
+      render();
+    })
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'session_feedback',
+      filter: `user_id=eq.${currentUser.id}`
+    }, async () => {
+      const remote = await loadStateFromSupabase();
+      if (remote) { state.feedback = remote.feedback; saveLocalState(state); render(); }
+    })
+    .subscribe();
+}
+
 async function initAuth() {
   if (!sb) { render(); return; }
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user) {
     currentUser = session.user;
     await loadUserData();
+    subscribeRealtime();
   }
 
   sb.auth.onAuthStateChange(async (_event, session) => {
     currentUser = session?.user || null;
     if (currentUser) {
       await loadUserData();
+      subscribeRealtime();
     } else {
+      if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
       userProfile = null;
       state = loadState();
     }
