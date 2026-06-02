@@ -266,6 +266,30 @@
   .sync-opt .so-title { font-size:13px; font-weight:700; }
   .sync-opt .so-desc { font-size:12px; color:var(--muted); margin-top:2px; line-height:1.4; }
   .wizard-next { width:100%; background:var(--accent); color:#0f1117; border:none; border-radius:8px; padding:12px; font-size:15px; font-weight:800; cursor:pointer; margin-top:8px; }
+  .injury-tag { padding:8px 14px; border-radius:20px; border:1.5px solid var(--border); background:var(--card2); color:var(--muted); font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; }
+  .injury-tag.selected { border-color:var(--accent); background:#1e2510; color:var(--accent); }
+  .weight-inputs { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+  .weight-row { display:flex; flex-direction:column; gap:4px; }
+  .weight-label { font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; }
+  .weight-input { background:var(--card2); border:1.5px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; padding:8px 10px; width:100%; outline:none; }
+  .weight-input:focus { border-color:var(--accent); }
+  .weight-progression { background:#1a1d10; border:1px solid var(--accent); border-radius:8px; padding:10px 12px; font-size:12px; color:var(--accent); margin-top:6px; }
+  .thumb-grid { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .thumb-slot { position:relative; width:80px; height:60px; border-radius:8px; overflow:hidden; border:1.5px solid var(--border); background:var(--card2); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
+  .thumb-slot img { width:100%; height:100%; object-fit:cover; }
+  .thumb-slot .thumb-actions { position:absolute; top:0; right:0; display:flex; gap:2px; padding:3px; }
+  .thumb-slot .ta-btn { background:rgba(0,0,0,.7); border:none; color:#fff; border-radius:4px; font-size:10px; cursor:pointer; padding:2px 5px; }
+  .thumb-add { border-style:dashed; font-size:20px; color:var(--muted); }
+  .edit-workout-form { margin-top:10px; }
+  .edit-metric-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px; }
+  .edit-metric { display:flex; flex-direction:column; gap:4px; }
+  .edit-metric label { font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase; }
+  .edit-input { background:var(--card2); border:1.5px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; padding:8px 10px; width:100%; outline:none; }
+  .edit-input:focus { border-color:var(--accent); }
+  .edit-lap-row { display:flex; align-items:center; gap:6px; padding:6px 0; border-bottom:1px solid var(--border2); }
+  .edit-lap-num { font-size:12px; color:var(--muted); width:32px; flex-shrink:0; }
+  .edit-lap-input { background:var(--card2); border:1.5px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; padding:6px 8px; flex:1; outline:none; }
+  .edit-lap-del { background:none; border:none; color:var(--skipped); font-size:16px; cursor:pointer; padding:0 4px; flex-shrink:0; }
   .wizard-step { display:none; }
   .wizard-step.active { display:block; }
   .wizard-progress { display:flex; gap:6px; margin-bottom:20px; }
@@ -310,15 +334,6 @@
   <div style="height:8px"></div>
   <button class="red-flag-btn" onclick="showRedFlags()">⚠ Knee red flags — know when to stop</button>
   <div style="height:8px"></div>
-  <button class="export-btn" onclick="exportFeedback()">↓ Export feedback JSON (for analyze_garmin.py)</button>
-  <div style="height:8px"></div>
-  <button class="export-btn" id="apiKeyBtn" onclick="promptApiKey()">🔑 Claude API key — screenshot analysis</button>
-  <div style="height:8px"></div>
-  <div style="display:flex;gap:8px;padding:0 16px">
-    <button class="export-btn" style="margin:0;flex:1;background:#1a1d26;border-color:#4cdd82;color:#4cdd82;font-weight:700" onclick="showBackupCode()">⇧ Backup this device</button>
-    <button class="export-btn" style="margin:0;flex:1;background:#1a1d26;border-color:#5b8fff;color:#5b8fff;font-weight:700" onclick="showRestoreCode()">⇩ Restore from backup</button>
-  </div>
-  <div style="font-size:11px;color:var(--muted);text-align:center;padding:5px 16px 0">Copy backup on one device · paste restore on the other</div>
   <div style="height:8px"></div>
   <button class="export-btn" style="margin:0 16px;width:calc(100% - 32px);background:#0d1829;border-color:#5b8fff;color:#5b8fff;font-weight:700" onclick="showCalendarExport()">📅 Add workouts to Google Calendar</button>
   <div style="font-size:11px;color:var(--muted);text-align:center;padding:5px 16px 8px">6 AM reminders · all remaining sessions · iPhone ready</div>
@@ -395,6 +410,79 @@ const STATION_RACE_DIST = {
 const STATION_UNITS = {
   wallball: 'reps', burpee: 'm', skierg: 'm', row: 'm',
   sled_push: 'm', sled_pull: 'm', farmers: 'm', lunges: 'm',
+};
+
+// ── Injury protocols ─────────────────────────────────────────────────────────
+
+const INJURY_PROTOCOLS = {
+  knee: {
+    warmup:   ['TKE band ×15 each leg', 'Short arc quad ×12 each', 'Straight leg raise ×12 each', 'Clamshell (band) ×15 each', 'Single-leg balance 30s each'],
+    cooldown: ['Quad stretch 45s each', 'Hamstring stretch 45s each', 'IT band foam roll 60s each', 'Calf stretch 45s each', 'Hip flexor lunge 45s each'],
+    recovery: ['Foam roll: quads 60s · IT band 60s · calves 60s · hamstrings 60s', 'TKE band ×20 each (light)', 'Straight leg raise ×15 each', 'Elevation 10 min if swollen', 'Ice 10 min if inflamed after activity'],
+    note:     'Knee/meniscus: stop if sharp pain. Dull ache during loading is OK — sharp or instability is not.',
+    stations: ['sled_push','sled_pull','lunges'],
+  },
+  shoulder: {
+    warmup:   ['Band pull-aparts ×20', 'Arm circles forward/back 20s each', 'Shoulder CARs ×5 each direction', 'Wall slides ×15', 'External rotation (band) ×15 each'],
+    cooldown: ['Doorframe pec stretch 30s each side', 'Cross-body shoulder stretch 30s each', 'Thread-the-needle 30s each side', 'Sleeper stretch 30s each'],
+    recovery: ['Foam roll: pecs 60s each · lats 60s each · thoracic spine 90s', 'Band pull-aparts 2×20', 'Pendulum swings 30s each arm', 'Ice/heat rotator cuff if inflamed'],
+    note:     'Shoulder injury: reduce SkiErg and row intensity. Use a lighter damper setting. Stop if sharp impingement pain.',
+    stations: ['skierg','row'],
+  },
+  back: {
+    warmup:   ['Cat-cow ×10 slow', 'Bird-dog ×10 each side — hold 3s', 'Dead bug ×10 each side', 'Glute bridges ×15', 'Hip flexor stretch 30s each'],
+    cooldown: ["Child's pose 60s", 'Knee-to-chest stretch 30s each', 'Piriformis stretch 30s each', 'Thoracic rotation 30s each side', 'Supine twist 30s each'],
+    recovery: ['Foam roll: thoracic spine 90s · lats 60s each · glutes 60s each', 'Cat-cow 2×10 slow', 'Bird-dog 2×10 each', 'McKenzie press-ups ×10 if comfortable'],
+    note:     'Back injury: brace core before all heavy carries. Avoid hyperextension on sled push. Stop if radiating pain.',
+    stations: ['farmers','sled_push','sled_pull','lunges'],
+  },
+  hip: {
+    warmup:   ['Hip circles ×10 each direction', '90/90 hip switch ×10 each', 'Pigeon prep stretch 30s each', 'Hip flexor lunge with reach 30s each', 'Lateral band walk ×20 steps each'],
+    cooldown: ['Pigeon pose 60s each side', 'Hip flexor lunge 45s each', 'Seated figure-four stretch 30s each', 'Supine twist 30s each'],
+    recovery: ['Foam roll: quads 60s · IT band 60s · hip flexors 60s · glutes 60s', 'Pigeon pose 90s each', '90/90 stretch 60s each position', 'Hip flexor lunge with rotation 30s each'],
+    note:     'Hip injury: watch depth on lunges and sled pull. Avoid anterior pelvic tilt under load. Stop if groin or hip socket pain.',
+    stations: ['sled_pull','lunges','farmers'],
+  },
+  ankle: {
+    warmup:   ['Ankle circles ×15 each direction', 'Dorsiflexion mobilisation ×15 each', 'Calf raises ×20 slow', 'Single-leg balance 30s each', 'Toe walks + heel walks 10m each'],
+    cooldown: ['Standing calf stretch 45s each', 'Seated ankle circles ×15 each', 'Plantar fascia stretch 30s each', 'Dorsiflexion stretch (wall) 45s each'],
+    recovery: ['Calf foam roll 60s each', 'Plantar fascia rolling with ball 2 min each foot', 'Dorsiflexion mobilisation ×20', 'Ankle alphabet tracing (draw A–Z with toe)', 'Elevation 10 min if swollen'],
+    note:     'Ankle injury: reduce running intensity on soft/uneven ground. Watch landing mechanics. Stop if sharp ankle pain.',
+    stations: ['sled_push','sled_pull'],
+  },
+  other: {
+    warmup:   ['5 min easy jog or row', 'Leg swings front/back ×15 each', 'Hip circles ×10 each direction', 'Arm circles forward/back 20s', 'Bodyweight squats ×15'],
+    cooldown: ['Easy 5 min walk', 'Quad stretch 30s each', 'Hamstring stretch 30s each', 'Hip flexor lunge 30s each', 'Shoulder cross-body stretch 30s each'],
+    recovery: ['Foam roll: quads 60s · calves 60s · lats 60s', 'Hip flexor lunge 45s each', 'Thoracic rotation 30s each', 'Consult your physio for injury-specific work'],
+    note:     'Custom injury noted. Adapt exercises as needed and consult your physio for specific modifications.',
+    stations: [],
+  },
+};
+
+const STANDARD_PROTOCOLS = {
+  warmup:   ['5 min easy jog or row', 'Leg swings front/back ×15 each', 'Hip circles ×10 each direction', 'Arm circles forward/back 20s', 'Bodyweight squats ×15', 'Walking lunges ×10 each leg'],
+  cooldown: ['Easy 5 min walk or slow jog', 'Quad stretch 30s each', 'Hamstring stretch 30s each', 'Hip flexor lunge 30s each', 'Calf stretch 30s each', 'Shoulder cross-body stretch 30s each'],
+  recovery: ['Foam roll: quads 60s each · IT band 60s each · calves 60s each · lats 60s', 'Hip flexor lunge 45s each', 'Pigeon pose 45s each', 'Thoracic rotation 30s each side', 'Deep breathing 2 min'],
+};
+
+function detectInjury(injuries) {
+  if (!injuries) return null;
+  const l = injuries.toLowerCase();
+  if (l.includes('knee') || l.includes('meniscus') || l.includes('acl') || l.includes('mcl') || l.includes('patella') || l.includes('pcl')) return 'knee';
+  if (l.includes('shoulder') || l.includes('rotator') || l.includes('labrum') || l.includes('impingement')) return 'shoulder';
+  if (l.includes('back') || l.includes('spine') || l.includes('disc') || l.includes('lumbar') || l.includes('sciatica')) return 'back';
+  if (l.includes('hip') || l.includes('groin') || l.includes('glute') || l.includes('piriformis')) return 'hip';
+  if (l.includes('ankle') || l.includes('achilles') || l.includes('plantar') || l.includes('calf')) return 'ankle';
+  return 'other';
+}
+
+// ── Station weights (kg) for Hyrox stations ──────────────────────────────────
+const STATION_WEIGHT_DEFAULTS = {
+  sled_push: { label: 'Sled Push', unit: 'kg added', hint: 'weight added to sled' },
+  sled_pull: { label: 'Sled Pull', unit: 'kg added', hint: 'weight added to sled' },
+  farmers:   { label: 'Farmers Carry', unit: 'kg/hand', hint: 'per hand' },
+  wallball:  { label: 'Wall Balls', unit: 'kg ball', hint: 'ball weight' },
+  lunges:    { label: 'Sandbag Lunges', unit: 'kg bag', hint: 'sandbag weight' },
 };
 
 // Session definitions. paceRef: which pace to highlight today.
@@ -827,6 +915,7 @@ async function pushFeedback(dateStr, feedbackObj) {
     actual_run_pace_sec: feedbackObj.actual_run_pace_sec || null,
     actual_station_sec:  feedbackObj.actual_station_sec || null,
     station_rpe:         feedbackObj.station_rpe || null,
+    station_weights:     feedbackObj.station_weights || null,
     updated_at:          new Date().toISOString(),
   };
   await sb.from('session_feedback').upsert(row, { onConflict: 'user_id,session_date' });
@@ -1054,8 +1143,18 @@ async function confirmDeleteData() {
 
 let wizardSyncMethod = 'intervals_icu';
 
+function toggleInjuryTag(el) {
+  const isNone = el.dataset.injury === 'none';
+  if (isNone) {
+    document.querySelectorAll('.injury-tag').forEach(t => t.classList.remove('selected'));
+    el.classList.add('selected');
+    return;
+  }
+  document.querySelector('.injury-tag[data-injury="none"]')?.classList.remove('selected');
+  el.classList.toggle('selected');
+}
+
 function showWizard() {
-  // Pre-fill from existing profile if available
   if (userProfile) {
     document.getElementById('wzName').value = userProfile.name || '';
     document.getElementById('wzAge').value  = userProfile.age  || '';
@@ -1069,6 +1168,19 @@ function showWizard() {
       el.classList.toggle('selected', el.dataset.method === wizardSyncMethod);
     });
     document.getElementById('intervalsFields').style.display = wizardSyncMethod === 'intervals_icu' ? 'block' : 'none';
+    // Pre-fill injury tags
+    const existingInjury = (userProfile.injuries || '').toLowerCase();
+    document.querySelectorAll('.injury-tag').forEach(t => t.classList.remove('selected'));
+    if (existingInjury) {
+      ['knee','shoulder','back','hip','ankle'].forEach(type => {
+        if (existingInjury.includes(type) || (type === 'knee' && existingInjury.includes('meniscus'))) {
+          document.querySelector(`.injury-tag[data-injury="${type}"]`)?.classList.add('selected');
+        }
+      });
+    } else {
+      document.querySelector('.injury-tag[data-injury="none"]')?.classList.add('selected');
+    }
+    document.getElementById('wzInjuryText').value = userProfile.injuries || '';
   }
   setWizardStep(0);
   document.getElementById('wizardOverlay').classList.remove('hidden');
@@ -1114,6 +1226,11 @@ async function wizardFinish() {
     sync_method:      wizardSyncMethod,
     intervals_icu_id: document.getElementById('wzIcuId')?.value?.trim() || null,
     intervals_icu_key:document.getElementById('wzIcuKey')?.value?.trim() || null,
+    injuries:         (() => {
+      const tags = [...document.querySelectorAll('.injury-tag.selected')].map(t => t.dataset.injury).filter(t => t !== 'none');
+      const text = document.getElementById('wzInjuryText')?.value?.trim() || '';
+      return tags.length ? (text ? `${tags.join(', ')}: ${text}` : tags.join(', ')) : (text || null);
+    })(),
     updated_at:       new Date().toISOString(),
   };
 
@@ -1572,7 +1689,18 @@ function renderSession() {
     return;
   }
   if (session.rest) {
-    area.innerHTML = `<div class="rest-card"><div class="rest-icon">😴</div><h2>Rest Day</h2><p>${session.restMsg}</p></div>`;
+    const injType = detectInjury(userProfile?.injuries);
+    const recovProto = injType ? INJURY_PROTOCOLS[injType].recovery : STANDARD_PROTOCOLS.recovery;
+    const injNote   = injType ? `<div class="knee-note" style="margin-bottom:12px">🩹 ${INJURY_PROTOCOLS[injType].note}</div>` : '';
+    const recovHtml = recovProto.map(i => `<div class="block-item">${i}</div>`).join('');
+    area.innerHTML = `<div class="rest-card">
+      <div class="rest-icon">😴</div><h2>Rest Day</h2><p>${session.restMsg}</p>
+      ${injNote}
+      <div class="block" style="margin-top:12px;text-align:left">
+        <div class="block-title">Recovery protocol</div>
+        ${recovHtml}
+      </div>
+    </div>`;
     return;
   }
 
@@ -1582,14 +1710,36 @@ function renderSession() {
   const statusLabel = comp === 'done' ? 'Done ✓' : comp === 'skipped' ? 'Skipped' : 'Pending';
   const statusCls = comp === 'done' ? 'done' : comp === 'skipped' ? 'skipped' : 'pending';
 
-  const blocksHtml = session.blocks.map(b => `
-    <div class="block">
-      <div class="block-title ${b.knee ? 'knee-title' : ''}">${b.title}</div>
-      ${b.knee ? `<div class="knee-note">Full details in <strong>knee-rehab-protocol.md</strong></div>` : ''}
-      ${b.items.map(item => `<div class="block-item">${injectPace(item, week)}</div>`).join('')}
-    </div>`).join('');
+  const injType  = detectInjury(userProfile?.injuries);
+  const proto    = injType ? INJURY_PROTOCOLS[injType] : null;
+  const hasKnee  = injType === 'knee';
 
-  const noteHtml = session.note ? `<div class="knee-note" style="margin-bottom:14px">💡 ${session.note}</div>` : '';
+  const blocksHtml = session.blocks.filter(b => !b.knee || hasKnee).map(b => {
+    const titleLow = b.title.toLowerCase();
+    const isWarmup   = titleLow.includes('warm') || titleLow.includes('activation');
+    const isCooldown = titleLow.includes('cool') || titleLow.includes('recovery');
+    const injItems   = isWarmup ? proto?.warmup : isCooldown ? proto?.cooldown : null;
+    const stdItems   = isWarmup ? STANDARD_PROTOCOLS.warmup : isCooldown ? STANDARD_PROTOCOLS.cooldown : null;
+    const extraItems = injItems || stdItems || [];
+    // Advisory note for injury-relevant stations in this block
+    const blockText  = b.items.join(' ').toLowerCase();
+    const stationNote = proto && proto.stations.some(s => blockText.includes(s.replace('_',' ')) || blockText.includes(STATION_LABELS[s]?.toLowerCase() || ''))
+      ? `<div class="knee-note" style="margin-bottom:6px">🩹 ${proto.note}</div>` : '';
+    return `<div class="block">
+      <div class="block-title ${b.knee ? 'knee-title' : ''}">${b.title}</div>
+      ${b.knee ? `<div class="knee-note">Knee rehab block — complete all sets before main session.</div>` : ''}
+      ${stationNote}
+      ${(injItems || stdItems) && (isWarmup || isCooldown)
+        ? extraItems.map(i => `<div class="block-item">${i}</div>`).join('')
+        : b.items.map(item => `<div class="block-item">${injectPace(item, week)}</div>`).join('')
+      }
+    </div>`;
+  }).join('');
+
+  const injNoteHtml = proto && !session.blocks.some(b => b.knee)
+    ? `<div class="knee-note" style="margin-bottom:14px">🩹 ${proto.note}</div>` : '';
+
+  const noteHtml = (session.note ? `<div class="knee-note" style="margin-bottom:14px">💡 ${session.note}</div>` : '') + injNoteHtml;
 
   let actionHtml = '';
   if (!comp) {
@@ -1782,6 +1932,29 @@ function openFeedback() {
     ${simPaceHtml}
     ${simRpeHtml}
     ${kneeHtml}
+    ${(() => {
+      const weightStations = Object.keys(STATION_WEIGHT_DEFAULTS).filter(k =>
+        isSim ? (SIM_STATIONS[viewDate] || []).includes(k) :
+        session.blocks?.some(b => b.items?.some(i => i.toLowerCase().includes(k.replace('_',' ')) || i.toLowerCase().includes((STATION_LABELS[k]||'').toLowerCase())))
+      );
+      const existingW = existing.station_weights || {};
+      if (!weightStations.length) return '';
+      const inputs = weightStations.map(k => {
+        const d = STATION_WEIGHT_DEFAULTS[k];
+        const prev = getWeightHistory(k, viewDate);
+        const progNote = prev && existingW[k] && existingW[k] > prev
+          ? `<div class="weight-progression">↑ +${existingW[k]-prev}kg from last session — great progression!</div>` : '';
+        return `<div class="weight-row">
+          <span class="weight-label">${d.label} <span style="font-weight:400">(${d.unit})</span></span>
+          <input class="weight-input" id="wt_${k}" type="number" min="0" step="0.5" placeholder="${d.hint}" value="${existingW[k] || ''}">
+          ${progNote}
+        </div>`;
+      }).join('');
+      return `<div class="q-block">
+        <span class="q-label">Weights used <span style="font-size:11px;font-weight:400;color:var(--muted)">(optional — leave blank if not applicable)</span></span>
+        <div class="weight-inputs">${inputs}</div>
+      </div>`;
+    })()}
     <div class="q-block">
       <span class="q-label">Notes (optional)</span>
       <textarea id="feedbackNotes" placeholder="What went well? Any issues? Anything to remember…">${existing.notes || ''}</textarea>
@@ -1823,6 +1996,13 @@ function selectRpe(el, val) {
   el.classList.add(cls);
 }
 
+function getWeightHistory(station, beforeDate) {
+  const entries = Object.entries(state.feedback)
+    .filter(([d, v]) => d < beforeDate && v.station_weights?.[station] > 0)
+    .sort(([a], [b]) => b.localeCompare(a));
+  return entries.length ? entries[0][1].station_weights[station] : null;
+}
+
 function saveFeedback() {
   const overall = document.querySelector('.feel-btn.selected');
   const pace = document.querySelector('.pace-opt.selected');
@@ -1848,6 +2028,12 @@ function saveFeedback() {
     if (!isNaN(mm) && !isNaN(ss)) actualRunPaceSec = mm * 60 + ss;
   }
 
+  const stationWeights = {};
+  Object.keys(STATION_WEIGHT_DEFAULTS).forEach(k => {
+    const v = parseFloat(document.getElementById(`wt_${k}`)?.value);
+    if (!isNaN(v) && v > 0) stationWeights[k] = v;
+  });
+
   state.feedback[viewDate] = {
     date: viewDate,
     session: session?.title,
@@ -1856,6 +2042,7 @@ function saveFeedback() {
     knee_pain: knee ? knee._val : null,
     notes,
     timestamp: new Date().toISOString(),
+    ...(Object.keys(stationWeights).length && { station_weights: stationWeights }),
     ...(isSim && { actual_run_pace: simPaceRaw, actual_run_pace_sec: actualRunPaceSec, station_rpe: stationRpe }),
   };
   saveState(state);
@@ -2041,18 +2228,17 @@ function renderAnalysisCard() {
   const existing = state.workoutData[viewDate];
 
   if (!existing) {
-    const hasKey = !!getApiKey();
     el.innerHTML = `
       <div class="upload-zone">
-        <label class="upload-btn" for="garminFileInput" style="margin-bottom:8px">
-          📸 Upload screenshot or activity file
-        </label>
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text)">Log this workout</div>
+        <div class="thumb-grid" id="thumbGrid_${viewDate}">
+          <label class="thumb-slot thumb-add" for="garminFileInput" title="Upload screenshot 1">+</label>
+        </div>
         <input type="file" id="garminFileInput" accept=".gpx,.tcx,image/*" style="display:none"
           onchange="handleWorkoutFile(this.files[0], '${viewDate}')">
-        <div style="font-size:11px;color:var(--muted);text-align:center;padding:0 8px;line-height:1.7">
-          <strong style="color:var(--text)">Screenshot:</strong> take a screenshot of the Garmin activity screen → upload here<br>
+        <div style="font-size:11px;color:var(--muted);text-align:center;padding:4px 8px 0;line-height:1.7">
+          <strong style="color:var(--text)">Screenshot:</strong> tap + to upload up to 3 screenshots<br>
           <strong style="color:var(--text)">File:</strong> Garmin Connect → ⋯ → Export to GPX
-          ${!hasKey ? `<br><span style="color:#ffb347">⚠ Set your Claude API key below to enable screenshot analysis</span>` : ''}
         </div>
       </div>`;
     return;
@@ -2093,6 +2279,25 @@ function renderAnalysisCard() {
     ${adjustments.map(a => `<div class="insight-item">${a}</div>`).join('')}
   </div>` : '';
 
+  const screenshots = existing.screenshots || [];
+  const thumbsHtml = screenshots.length ? `
+    <div class="thumb-grid" style="margin-bottom:10px">
+      ${screenshots.map((s, i) => `
+        <div class="thumb-slot">
+          <img src="${s.thumb}" alt="Screenshot ${i+1}">
+          <div class="thumb-actions">
+            <label class="ta-btn" for="replaceShot_${i}" title="Replace">↺</label>
+            <button class="ta-btn" onclick="removeScreenshot('${viewDate}',${i})" title="Remove">✕</button>
+          </div>
+          <input type="file" id="replaceShot_${i}" accept="image/*" style="display:none"
+            onchange="handleScreenshotReplace(this.files[0],'${viewDate}',${i})">
+        </div>`).join('')}
+      ${screenshots.length < 3 ? `
+        <label class="thumb-slot thumb-add" for="addShot" title="Add screenshot">+</label>
+        <input type="file" id="addShot" accept="image/*" style="display:none"
+          onchange="handleWorkoutFile(this.files[0],'${viewDate}')">` : ''}
+    </div>` : '';
+
   el.innerHTML = `
     <div class="analysis-card">
       <div class="analysis-header">
@@ -2101,6 +2306,7 @@ function renderAnalysisCard() {
         <span class="a-date">${new Date(viewDate + 'T00:00:00').toLocaleDateString('en-AU', {day:'numeric',month:'short'})}</span>
       </div>
       <div class="analysis-body">
+        ${thumbsHtml}
         <div class="analysis-metrics">
           <div class="metric-box ${paceClass}">
             <div class="m-val">${secToPace(avgPaceSec)}</div>
@@ -2115,10 +2321,12 @@ function renderAnalysisCard() {
             <div class="m-label">km</div>
           </div>
         </div>
-        ${laps.length > 1 ? `<div class="lap-grid">${lapsHtml}</div>` : ''}
+        ${laps.length > 1 ? `<div class="lap-grid" id="lapGrid_${viewDate}">${lapsHtml}</div>` : ''}
         ${winsHtml}${watchHtml}${adjHtml}
-        <div style="text-align:right;margin-top:6px">
-          <label for="garminFileReplace" style="font-size:12px;color:var(--muted);cursor:pointer">↺ Replace file or screenshot</label>
+        <div id="editWorkoutArea_${viewDate}"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;align-items:center">
+          <button onclick="showEditWorkout('${viewDate}')" style="font-size:12px;color:var(--muted);background:none;border:none;cursor:pointer;padding:0">✏ Edit data</button>
+          <label for="garminFileReplace" style="font-size:12px;color:var(--muted);cursor:pointer">↺ Replace file</label>
           <input type="file" id="garminFileReplace" accept=".gpx,.tcx,image/*" style="display:none"
             onchange="handleWorkoutFile(this.files[0], '${viewDate}')">
         </div>
@@ -2126,11 +2334,101 @@ function renderAnalysisCard() {
     </div>`;
 }
 
+async function handleScreenshotReplace(file, dk, slotIndex) {
+  if (!file) return;
+  await handleScreenshotUpload(file, dk, slotIndex);
+}
+
+function showEditWorkout(dk) {
+  const data = state.workoutData[dk];
+  if (!data) return;
+  const area = document.getElementById(`editWorkoutArea_${dk}`);
+  if (!area) return;
+  const laps = data.laps || [];
+  const lapsRows = laps.map((l, i) => `
+    <div class="edit-lap-row" id="editLap_${dk}_${i}">
+      <span class="edit-lap-num">km ${i+1}</span>
+      <input class="edit-lap-input" id="elPace_${dk}_${i}" type="text" value="${secToPace(l.paceSecPerKm)}" placeholder="MM:SS" style="max-width:70px">
+      <input class="edit-lap-input" id="elHR_${dk}_${i}" type="number" value="${l.avgHR || ''}" placeholder="HR" style="max-width:60px">
+      <button class="edit-lap-del" onclick="deleteEditLap('${dk}',${i})" title="Delete this lap">✕</button>
+    </div>`).join('');
+  area.innerHTML = `
+    <div class="edit-workout-form" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Edit data</div>
+      <div class="edit-metric-row">
+        <div class="edit-metric"><label>Avg Pace</label><input class="edit-input" id="edAvgPace_${dk}" type="text" value="${secToPace(data.avgPaceSec)}" placeholder="MM:SS"></div>
+        <div class="edit-metric"><label>Avg HR</label><input class="edit-input" id="edAvgHR_${dk}" type="number" value="${data.avgHR || ''}" placeholder="bpm"></div>
+        <div class="edit-metric"><label>Distance km</label><input class="edit-input" id="edDist_${dk}" type="number" step="0.01" value="${((data.totalDist||0)/1000).toFixed(2)}" placeholder="km"></div>
+      </div>
+      <div style="margin-bottom:6px;font-size:12px;color:var(--muted)">Laps — delete rest laps or correct pace/HR</div>
+      <div id="editLapsList_${dk}">${lapsRows}</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button onclick="recalcFromLaps('${dk}')" style="flex:1;padding:8px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer">↺ Recalc from laps</button>
+        <button onclick="saveWorkoutEdit('${dk}')" style="flex:2;padding:8px;background:var(--accent);border:none;border-radius:8px;color:#0f1117;font-size:13px;font-weight:700;cursor:pointer">Save</button>
+        <button onclick="document.getElementById('editWorkoutArea_${dk}').innerHTML=''" style="flex:1;padding:8px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function deleteEditLap(dk, idx) {
+  const row = document.getElementById(`editLap_${dk}_${idx}`);
+  if (row) row.remove();
+  // Re-index remaining lap labels
+  document.querySelectorAll(`[id^="editLap_${dk}_"]`).forEach((r, i) => {
+    r.querySelector('.edit-lap-num').textContent = `km ${i+1}`;
+  });
+}
+
+function recalcFromLaps(dk) {
+  const rows = [...document.querySelectorAll(`[id^="editLap_${dk}_"]`)];
+  if (!rows.length) return;
+  let totalPaceSec = 0, totalHR = 0, hrCount = 0;
+  rows.forEach((r, i) => {
+    const paceStr = document.getElementById(`elPace_${dk}_${i}`)?.value || '';
+    const [pm, ps] = paceStr.split(':').map(Number);
+    if (!isNaN(pm) && !isNaN(ps)) totalPaceSec += pm * 60 + ps;
+    const hr = parseFloat(document.getElementById(`elHR_${dk}_${i}`)?.value);
+    if (!isNaN(hr) && hr > 0) { totalHR += hr; hrCount++; }
+  });
+  const avgPaceSec = Math.round(totalPaceSec / rows.length);
+  document.getElementById(`edAvgPace_${dk}`).value = secToPace(avgPaceSec);
+  if (hrCount) document.getElementById(`edAvgHR_${dk}`).value = Math.round(totalHR / hrCount);
+}
+
+function saveWorkoutEdit(dk) {
+  const data = state.workoutData[dk];
+  if (!data) return;
+  const paceStr = document.getElementById(`edAvgPace_${dk}`)?.value || '';
+  const [pm, ps] = paceStr.split(':').map(Number);
+  if (!isNaN(pm) && !isNaN(ps)) data.avgPaceSec = pm * 60 + ps;
+  const hr = parseFloat(document.getElementById(`edAvgHR_${dk}`)?.value);
+  if (!isNaN(hr) && hr > 0) data.avgHR = hr;
+  const dist = parseFloat(document.getElementById(`edDist_${dk}`)?.value);
+  if (!isNaN(dist) && dist > 0) data.totalDist = dist * 1000;
+
+  const rows = [...document.querySelectorAll(`[id^="editLap_${dk}_"]`)];
+  data.laps = rows.map((_, i) => {
+    const pStr = document.getElementById(`elPace_${dk}_${i}`)?.value || '';
+    const [m2, s2] = pStr.split(':').map(Number);
+    const pSec = (!isNaN(m2) && !isNaN(s2)) ? m2 * 60 + s2 : (data.laps[i]?.paceSecPerKm || 0);
+    const hr2 = parseFloat(document.getElementById(`elHR_${dk}_${i}`)?.value) || 0;
+    return { ...data.laps[i], paceSecPerKm: pSec, avgHR: hr2 };
+  });
+
+  saveState(state);
+  render();
+}
+
 async function handleWorkoutFile(file, dk) {
   if (!file) return;
   const ext = file.name.split('.').pop().toLowerCase();
   const isImage = file.type.startsWith('image/') || ['jpg','jpeg','png','webp','heic','heif'].includes(ext);
-  if (isImage) { await handleScreenshotFile(file, dk); return; }
+  if (isImage) {
+    const existing = state.workoutData[dk];
+    const slotIdx = existing?.screenshots ? existing.screenshots.length : 0;
+    await handleScreenshotUpload(file, dk, Math.min(slotIdx, 2));
+    return;
+  }
 
   const text = await file.text();
   const laps = ext === 'tcx' ? parseTCX(text) : ext === 'gpx' ? parseGPX(text) : null;
@@ -2245,53 +2543,74 @@ Conversion rules:
   return JSON.parse(match[0]);
 }
 
-async function handleScreenshotFile(file, dk) {
+async function makeThumb(file) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 200;
+      const r = Math.min(MAX / img.width, MAX / img.height);
+      const c = document.createElement('canvas');
+      c.width = img.width * r; c.height = img.height * r;
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.65));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+async function handleScreenshotUpload(file, dk, slotIndex) {
   const apiKey = getApiKey();
   if (!apiKey) { promptApiKey(); return; }
 
   const el = document.getElementById('analysisArea');
   el.innerHTML = `<div style="margin:12px 16px;padding:24px;text-align:center;color:var(--muted);font-size:13px;background:var(--card);border-radius:14px;border:1px solid var(--border)">
     <div style="font-size:24px;margin-bottom:10px">🔍</div>
-    Reading screenshot with Claude vision…
+    Reading screenshot ${slotIndex + 1} with Claude vision…
   </div>`;
 
   try {
-    const base64   = await fileToBase64(file);
+    const [base64, thumb] = await Promise.all([fileToBase64(file), makeThumb(file)]);
     const mimeType = file.type || 'image/jpeg';
-    const data     = await callClaudeVision(base64, mimeType, apiKey);
+    const data = await callClaudeVision(base64, mimeType, apiKey);
 
-    // Build laps array
     let laps = [];
-    if (data.laps && data.laps.length > 0) {
-      laps = data.laps
-        .filter(l => l.pace_sec_per_km > 0)
-        .map(l => ({
-          distM: 1000,
-          totalTimeSec: l.pace_sec_per_km,
-          paceSecPerKm: l.pace_sec_per_km,
-          avgHR: l.avg_hr || 0,
-          maxHR: 0,
-        }));
+    if (data.laps?.length) {
+      laps = data.laps.filter(l => l.pace_sec_per_km > 0).map(l => ({
+        distM: 1000, totalTimeSec: l.pace_sec_per_km,
+        paceSecPerKm: l.pace_sec_per_km, avgHR: l.avg_hr || 0, maxHR: 0,
+      }));
     }
-
-    // Fall back to totals if no lap data
     if (!laps.length && data.avg_pace_sec_per_km) {
-      const distM   = (data.total_distance_km || 1) * 1000;
-      const timeSec = data.total_time_seconds || data.avg_pace_sec_per_km * (data.total_distance_km || 1);
-      laps = [{ distM, totalTimeSec: timeSec, paceSecPerKm: data.avg_pace_sec_per_km, avgHR: data.avg_hr_bpm || 0, maxHR: data.max_hr_bpm || 0 }];
+      const distM = (data.total_distance_km || 1) * 1000;
+      laps = [{ distM, totalTimeSec: data.total_time_seconds || data.avg_pace_sec_per_km * (data.total_distance_km || 1),
+        paceSecPerKm: data.avg_pace_sec_per_km, avgHR: data.avg_hr_bpm || 0, maxHR: data.max_hr_bpm || 0 }];
     }
 
     if (!laps.length) {
       el.innerHTML = `<div style="margin:12px 16px;padding:16px;background:#2a1010;border-radius:12px;font-size:13px;color:#ff9999;line-height:1.6">
-        Could not extract workout data from that screenshot. Try a screen showing the main activity summary (pace, HR, distance), or use a GPX/TCX file instead.
+        Could not extract workout data from screenshot ${slotIndex + 1}. Try a screen showing the main activity summary (pace, HR, distance), or use a GPX/TCX file instead.
       </div>`;
       return;
     }
 
-    const analysis = analyzeWorkout(laps, dk);
-    if (!analysis) return;
-    analysis.fromScreenshot = true;
-    state.workoutData[dk] = analysis;
+    const newAnalysis = analyzeWorkout(laps, dk);
+    if (!newAnalysis) return;
+
+    const existing = state.workoutData[dk] || {};
+    const screenshots = existing.screenshots ? [...existing.screenshots] : [];
+    if (slotIndex < screenshots.length) screenshots[slotIndex] = { thumb, analyzedAt: new Date().toISOString() };
+    else screenshots.push({ thumb, analyzedAt: new Date().toISOString() });
+
+    // Merge: prefer analysis with more laps; supplement missing HR from other
+    const merged = (existing.laps?.length || 0) >= laps.length ? existing : newAnalysis;
+    merged.screenshots = screenshots;
+    merged.fromScreenshot = true;
+    if (merged !== newAnalysis && !merged.avgHR && newAnalysis.avgHR) merged.avgHR = newAnalysis.avgHR;
+
+    state.workoutData[dk] = merged;
     if (!state.completions[dk]) state.completions[dk] = 'done';
     saveState(state);
     render();
@@ -2302,6 +2621,16 @@ async function handleScreenshotFile(file, dk) {
       <button onclick="promptApiKey()" style="color:var(--accent2);background:none;border:none;cursor:pointer;font-size:13px;padding:0">Update API key →</button>
     </div>`;
   }
+}
+
+function removeScreenshot(dk, idx) {
+  if (!state.workoutData[dk]) return;
+  const shots = state.workoutData[dk].screenshots || [];
+  shots.splice(idx, 1);
+  state.workoutData[dk].screenshots = shots;
+  if (!shots.length) { delete state.workoutData[dk]; }
+  saveState(state);
+  render();
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
@@ -2402,7 +2731,7 @@ document.getElementById('feedbackModal').addEventListener('click', function(e) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-if (getApiKey()) document.getElementById('apiKeyBtn').textContent = '🔑 Claude API key — ✓ saved';
+// API key button removed — key is prompted automatically on screenshot upload
 
 // Initialise auth then render (auth state listener calls render on change)
 initAuth().then(() => render());
@@ -2574,6 +2903,7 @@ function downloadICS() {
       <div class="wizard-dot done" id="wd0"></div>
       <div class="wizard-dot" id="wd1"></div>
       <div class="wizard-dot" id="wd2"></div>
+      <div class="wizard-dot" id="wd3"></div>
     </div>
 
     <!-- Step 1: Profile -->
@@ -2657,6 +2987,25 @@ function downloadICS() {
         </div>
       </div>
 
+      <button class="wizard-next" onclick="wizardNext(2)">Next →</button>
+    </div>
+
+    <!-- Step 4: Injuries -->
+    <div class="wizard-step" id="wizStep3">
+      <h2>Any injuries to note?</h2>
+      <p class="wizard-sub">Your warm-up, cool-down, and recovery sessions will be tailored to your needs. Select all that apply.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        <button class="injury-tag" data-injury="knee" onclick="toggleInjuryTag(this)">🦵 Knee / Meniscus</button>
+        <button class="injury-tag" data-injury="shoulder" onclick="toggleInjuryTag(this)">💪 Shoulder</button>
+        <button class="injury-tag" data-injury="back" onclick="toggleInjuryTag(this)">🔙 Back</button>
+        <button class="injury-tag" data-injury="hip" onclick="toggleInjuryTag(this)">🏃 Hip / Groin</button>
+        <button class="injury-tag" data-injury="ankle" onclick="toggleInjuryTag(this)">🦶 Ankle / Achilles</button>
+        <button class="injury-tag" data-injury="none" onclick="toggleInjuryTag(this)">✅ No injuries</button>
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Details <span style="font-weight:400;color:var(--muted)">(optional — e.g. "left meniscus tear, 6 months post-op")</span></label>
+        <textarea id="wzInjuryText" class="auth-input" rows="3" placeholder="Describe your injury or leave blank…" style="resize:vertical;min-height:72px"></textarea>
+      </div>
       <button class="wizard-next" id="startTrainingBtn" onclick="wizardFinish()">Start training →</button>
     </div>
   </div>
