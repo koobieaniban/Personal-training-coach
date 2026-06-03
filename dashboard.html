@@ -1288,6 +1288,10 @@ let wizardFreq = 3;
 let wizardDays = new Set();
 
 function showWizard() {
+  // Always reset injury tags first so stale DOM state never carries over
+  document.querySelectorAll('.injury-tag').forEach(t => t.classList.remove('selected'));
+  document.querySelector('.injury-tag[data-injury="none"]')?.classList.add('selected');
+
   if (userProfile) {
     document.getElementById('wzName').value = userProfile.name || '';
     document.getElementById('wzAge').value  = userProfile.age  || '';
