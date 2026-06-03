@@ -410,6 +410,15 @@ const STATION_UNITS = {
   sled_push: 'm', sled_pull: 'm', farmers: 'm', lunges: 'm',
 };
 
+// Weight logging metadata for station feedback form
+const STATION_WEIGHT_DEFAULTS = {
+  sled_push: { label: 'Sled Push',       unit: 'kg added', hint: 'weight added to sled' },
+  sled_pull: { label: 'Sled Pull',       unit: 'kg added', hint: 'weight added to sled' },
+  farmers:   { label: 'Farmers Carry',   unit: 'kg/hand',  hint: 'per hand' },
+  wallball:  { label: 'Wall Balls',      unit: 'kg ball',  hint: 'ball weight' },
+  lunges:    { label: 'Sandbag Lunges',  unit: 'kg bag',   hint: 'sandbag weight' },
+};
+
 // ── Injury protocols ─────────────────────────────────────────────────────────
 
 const INJURY_PROTOCOLS = {
@@ -1122,12 +1131,26 @@ async function loadUserData() {
     const useLocalFb   = localFbCount > remoteFbCount;
     const useLocalWd   = localWdCount > remoteWdCount;
 
+    // Merge workoutData: prefer the entry with more data (screenshots take priority)
+    const mergedWd = { ...(remote.workoutData || {}) };
+    Object.entries(local.workoutData || {}).forEach(([d, localEntry]) => {
+      const remoteEntry = remote.workoutData?.[d];
+      if (!remoteEntry) { mergedWd[d] = localEntry; return; }
+      const localShots  = (localEntry?.screenshots  || []).length;
+      const remoteShots = (remoteEntry?.screenshots || []).length;
+      const localLaps   = (localEntry?.laps         || []).length;
+      const remoteLaps  = (remoteEntry?.laps        || []).length;
+      // prefer whichever has screenshots; break ties by laps count; else keep remote
+      mergedWd[d] = (localShots > remoteShots || (localShots === remoteShots && localLaps >= remoteLaps && localLaps > 0))
+        ? localEntry : remoteEntry;
+    });
+
     state = {
       ...remote,
       completions: useLocalComp ? local.completions : remote.completions,
       paceAdj:     local.paceAdj || remote.paceAdj,
       feedback:    useLocalFb   ? local.feedback   : remote.feedback,
-      workoutData: { ...(remote.workoutData || {}), ...(local.workoutData || {}) },
+      workoutData: mergedWd,
     };
 
     if (useLocalComp) pushTrainingState(state);
@@ -2485,7 +2508,14 @@ function renderAnalysisCard() {
     return;
   }
 
-  const { laps, avgPaceSec, avgHR, totalDist, totalTime, wins, watch, adjustments } = existing;
+  const laps        = existing.laps        || [];
+  const avgPaceSec  = existing.avgPaceSec  || 0;
+  const avgHR       = existing.avgHR       || 0;
+  const totalDist   = existing.totalDist   || 0;
+  const totalTime   = existing.totalTime   || 0;
+  const wins        = existing.wins        || [];
+  const watch       = existing.watch       || [];
+  const adjustments = existing.adjustments || [];
   const week = session?.week || getWeekNum(viewDate);
   const paceRef = session?.paceRef || 'easy';
   const planned = adjustedPace(week, paceRef);
