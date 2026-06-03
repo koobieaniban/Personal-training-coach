@@ -885,19 +885,19 @@
     if (weeksAvail < 2) {
       box.className = 'feasibility danger';
       title.textContent = '⚠️ Very little time before race day';
-      body.textContent = `Only ${weeksAvail} week${weeksAvail !== 1 ? 's' : ''} available. We'll give you the best possible prep, but set realistic expectations — aim for completing the race and enjoying the experience.`;
+      body.textContent = `Only ${weeksAvail} week${weeksAvail !== 1 ? 's' : ''} until race day — we'll give you the sharpest possible prep for the time available. Let's see how the first sessions go and we'll set realistic targets from there.`;
     } else if (goalMins < achievableRange[0]) {
       box.className = 'feasibility warn';
-      title.textContent = '⚡ Ambitious goal — possible, but tight';
-      body.innerHTML = `Based on your level, ${weeksAvail} weeks, and ${freq}×/week training, a realistic target is around <strong>${Math.floor(achievableRange[0]/60)}h ${achievableRange[0]%60}m – ${Math.floor(achievableRange[1]/60)}h ${achievableRange[1]%60}m</strong>. Your goal of <strong>${Math.floor(goalMins/60)}h ${goalMins%60}m</strong> is achievable with strong execution — we'll build toward it. Consider adjusting if you want a safer target.`;
+      title.textContent = '⚡ Bold target — we\'re here for it';
+      body.innerHTML = `That's an optimistic goal for ${weeksAvail} weeks at ${freq} day${freq > 1 ? 's' : ''}/week — but let's not write it off yet. We'll build your plan around it, then use your first week of sessions to see where you really are. If the data says you're on track, great. If not, we'll recalibrate together so you still have the best race possible.`;
     } else if (goalMins > achievableRange[1] + 20) {
       box.className = 'feasibility ok';
-      title.textContent = '✓ Conservative goal — great foundation';
-      body.innerHTML = `With ${weeksAvail} weeks and your experience level, we estimate you could push for <strong>${Math.floor(achievableRange[0]/60)}h ${achievableRange[0]%60}m</strong>. Your goal of <strong>${Math.floor(goalMins/60)}h ${goalMins%60}m</strong> is very achievable — you may want to be more ambitious!`;
+      title.textContent = '✓ Solid and achievable — maybe even beatable';
+      body.innerHTML = `Based on your level and timeline, this goal looks very much within reach. Once we see how your first week of training goes, we may suggest pushing the target a little — but let's lock this in for now and let your sessions do the talking.`;
     } else {
       box.className = 'feasibility ok';
       title.textContent = '✓ Goal looks well-matched';
-      body.innerHTML = `With ${weeksAvail} weeks of training at ${freq} day${freq > 1 ? 's' : ''}/week, your goal of <strong>${Math.floor(goalMins/60)}h ${goalMins%60}m</strong> aligns well with your experience level. We'll build the plan to get you there.`;
+      body.innerHTML = `With ${weeksAvail} weeks at ${freq} day${freq > 1 ? 's' : ''}/week, your goal of <strong>${Math.floor(goalMins/60)}h ${goalMins%60}m</strong> looks right in range. We'll build the plan around it and check in after your first week of sessions — if you're tracking ahead, we'll push the target up.`;
     }
   }
 
