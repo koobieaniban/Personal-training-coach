@@ -476,8 +476,31 @@ function detectInjury(injuries) {
   return 'other';
 }
 
-// ── Station weights (kg) for Hyrox stations ──────────────────────────────────
-const STATION_WEIGHT_DEFAULTS = {
+// ── Hyrox race categories ────────────────────────────────────────────────────
+
+const HYROX_CATEGORIES = {
+  open_men:      { label: 'Open Men',      gender: 'm', weights: { sled_push:50,  sled_pull:50,  farmers:24, wallball:6, lunges:20 }, wallball_height: 9   },
+  open_women:    { label: 'Open Women',    gender: 'f', weights: { sled_push:25,  sled_pull:25,  farmers:12, wallball:4, lunges:10 }, wallball_height: 7.5 },
+  pro_men:       { label: 'Pro Men',       gender: 'm', weights: { sled_push:100, sled_pull:100, farmers:32, wallball:6, lunges:30 }, wallball_height: 10  },
+  pro_women:     { label: 'Pro Women',     gender: 'f', weights: { sled_push:50,  sled_pull:50,  farmers:20, wallball:4, lunges:20 }, wallball_height: 9   },
+  doubles_men:   { label: 'Doubles Men',   gender: 'm', weights: { sled_push:50,  sled_pull:50,  farmers:24, wallball:6, lunges:20 }, wallball_height: 9,  doubles: true },
+  doubles_women: { label: 'Doubles Women', gender: 'f', weights: { sled_push:25,  sled_pull:25,  farmers:12, wallball:4, lunges:10 }, wallball_height: 7.5, doubles: true },
+  doubles_mixed: { label: 'Doubles Mixed', gender: 'm', weights: { sled_push:50,  sled_pull:50,  farmers:24, wallball:6, lunges:20 }, wallball_height: 9,  doubles: true },
+  relay:         { label: 'Relay',         gender: 'm', weights: { sled_push:50,  sled_pull:50,  farmers:24, wallball:6, lunges:20 }, wallball_height: 9,  relay: true  },
+};
+
+function getCatWeights() {
+  const cat = userProfile?.race_category;
+  return (cat && HYROX_CATEGORIES[cat]) ? HYROX_CATEGORIES[cat].weights : null;
+}
+
+// Training weight targets ramp up over plan weeks (% of race weight)
+function getWeekWeightPct(week) {
+  if (week <= 2) return 0.65;
+  if (week <= 4) return 0.80;
+  if (week <= 5) return 0.90;
+  return 1.0;
+}
   sled_push: { label: 'Sled Push', unit: 'kg added', hint: 'weight added to sled' },
   sled_pull: { label: 'Sled Pull', unit: 'kg added', hint: 'weight added to sled' },
   farmers:   { label: 'Farmers Carry', unit: 'kg/hand', hint: 'per hand' },
@@ -918,12 +941,13 @@ async function pushFeedback(dateStr, feedbackObj) {
     station_weights:     feedbackObj.station_weights || null,
     updated_at:          new Date().toISOString(),
   };
-  await sb.from('session_feedback').upsert(row, { onConflict: 'user_id,session_date' });
+  const { error } = await sb.from('session_feedback').upsert(row, { onConflict: 'user_id,session_date' });
+  if (error) console.error('pushFeedback failed:', error.message);
 }
 
 async function pushWorkoutData(dateStr, data) {
   if (!currentUser) return;
-  await sb.from('workout_data').upsert({
+  const { error } = await sb.from('workout_data').upsert({
     user_id: currentUser.id,
     session_date: dateStr,
     source: data.source || 'manual',
@@ -933,6 +957,7 @@ async function pushWorkoutData(dateStr, data) {
     distance_m: data.distanceM || null,
     laps: data.laps || null,
   }, { onConflict: 'user_id,session_date' });
+  if (error) console.error('pushWorkoutData failed:', error.message);
 }
 
 async function loadStateFromSupabase() {
@@ -1024,23 +1049,47 @@ async function loadUserData() {
 
   const remote = await loadStateFromSupabase();
   if (remote) {
-    // Merge: keep whichever has more completions (protects against empty Supabase overwriting local data)
     const local = loadState();
-    const localCount  = Object.keys(local.completions  || {}).length;
-    const remoteCount = Object.keys(remote.completions || {}).length;
-    if (localCount > remoteCount) {
-      // Local has more data — push it up to Supabase then use it
-      state = { ...remote, completions: local.completions, paceAdj: local.paceAdj || remote.paceAdj };
-      pushTrainingState(state);
-    } else {
-      state = remote;
+    const localCount    = Object.keys(local.completions || {}).length;
+    const remoteCount   = Object.keys(remote.completions || {}).length;
+    const localFbCount  = Object.keys(local.feedback    || {}).length;
+    const remoteFbCount = Object.keys(remote.feedback   || {}).length;
+    const localWdCount  = Object.keys(local.workoutData  || {}).length;
+    const remoteWdCount = Object.keys(remote.workoutData || {}).length;
+
+    const useLocalComp = localCount  > remoteCount;
+    const useLocalFb   = localFbCount > remoteFbCount;
+    const useLocalWd   = localWdCount > remoteWdCount;
+
+    state = {
+      ...remote,
+      completions: useLocalComp ? local.completions : remote.completions,
+      paceAdj:     local.paceAdj || remote.paceAdj,
+      feedback:    useLocalFb   ? local.feedback   : remote.feedback,
+      workoutData: { ...(remote.workoutData || {}), ...(local.workoutData || {}) },
+    };
+
+    if (useLocalComp) pushTrainingState(state);
+
+    // Push any local feedback entries missing from Supabase
+    if (useLocalFb) {
+      Object.entries(local.feedback || {}).forEach(([d, fb]) => {
+        if (!remote.feedback?.[d]) pushFeedback(d, fb);
+      });
     }
+    // Push any local workout data entries missing from Supabase
+    if (useLocalWd) {
+      Object.entries(local.workoutData || {}).forEach(([d, wd]) => {
+        if (!remote.workoutData?.[d]) pushWorkoutData(d, wd);
+      });
+    }
+
     if (!state.completions) state.completions = {};
     if (!state.feedback)    state.feedback    = {};
     if (!state.paceAdj)     state.paceAdj     = {};
     if (!state.workoutData) state.workoutData  = {};
     saveLocalState(state);
-    console.log('Loaded from Supabase — completions:', Object.keys(state.completions).length, 'feedback:', Object.keys(state.feedback).length);
+    console.log('Loaded from Supabase — completions:', Object.keys(state.completions).length, 'feedback:', Object.keys(state.feedback).length, 'workoutData:', Object.keys(state.workoutData).length);
   } else {
     console.warn('loadStateFromSupabase returned null — using local state');
   }
@@ -2613,6 +2662,7 @@ async function handleScreenshotUpload(file, dk, slotIndex) {
     state.workoutData[dk] = merged;
     if (!state.completions[dk]) state.completions[dk] = 'done';
     saveState(state);
+    if (currentUser) await pushWorkoutData(dk, merged);
     render();
 
   } catch (err) {
@@ -2630,6 +2680,9 @@ function removeScreenshot(dk, idx) {
   state.workoutData[dk].screenshots = shots;
   if (!shots.length) { delete state.workoutData[dk]; }
   saveState(state);
+  if (currentUser) {
+    if (state.workoutData[dk]) pushWorkoutData(dk, state.workoutData[dk]);
+  }
   render();
 }
 
