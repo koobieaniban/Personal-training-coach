@@ -59,12 +59,27 @@ CREATE TABLE IF NOT EXISTS public.workout_data (
   UNIQUE(user_id, session_date)
 );
 
+-- ── Profile column additions (safe to re-run) ────────────────────────────────
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS race_category    TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS training_level   TEXT DEFAULT 'intermediate';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS sessions_per_week INTEGER;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS training_days    TEXT;
+ALTER TABLE public.session_feedback ADD COLUMN IF NOT EXISTS station_weights JSONB;
+
 -- ── Row Level Security ────────────────────────────────────────────────────────
 
 ALTER TABLE public.profiles        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.training_state  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.session_feedback ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workout_data    ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies before recreating (safe to re-run)
+DROP POLICY IF EXISTS "Own profile select"  ON public.profiles;
+DROP POLICY IF EXISTS "Own profile insert"  ON public.profiles;
+DROP POLICY IF EXISTS "Own profile update"  ON public.profiles;
+DROP POLICY IF EXISTS "Own training state"  ON public.training_state;
+DROP POLICY IF EXISTS "Own feedback"        ON public.session_feedback;
+DROP POLICY IF EXISTS "Own workout data"    ON public.workout_data;
 
 -- Profiles
 CREATE POLICY "Own profile select" ON public.profiles FOR SELECT USING (auth.uid() = id);
@@ -79,6 +94,13 @@ CREATE POLICY "Own feedback" ON public.session_feedback FOR ALL USING (auth.uid(
 
 -- Workout data
 CREATE POLICY "Own workout data" ON public.workout_data FOR ALL USING (auth.uid() = user_id);
+
+-- ── Grant table access to authenticated users ────────────────────────────────
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles         TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.training_state   TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.session_feedback TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.workout_data     TO authenticated;
 
 -- ── Auto-create profile on signup ────────────────────────────────────────────
 
