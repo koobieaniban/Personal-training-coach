@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hyrox Coach — Signup Wizard Mockup</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e1015;
+    --card: #1a1d24;
+    --card2: #20232c;
+    --border: #2a2d35;
+    --accent: #6ee7b7;
+    --accent2: #818cf8;
+    --accent3: #f472b6;
+    --warn: #fbbf24;
+    --danger: #f87171;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --muted2: #94a3b8;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .wizard-shell {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  .wizard-header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  .wizard-header .logo {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .wizard-header .sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  /* Progress dots */
+  .progress-dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 28px;
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: all 0.25s;
+  }
+  .dot.active { background: var(--accent); width: 24px; border-radius: 4px; }
+  .dot.done   { background: var(--accent); opacity: 0.4; }
+
+  /* Step card */
+  .step {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px 24px;
+    display: none;
+  }
+  .step.active { display: block; }
+
+  .step-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .step-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    letter-spacing: -0.3px;
+  }
+  .step-desc {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+
+  /* Form fields */
+  .field { margin-bottom: 16px; }
+  .field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted2);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .field input, .field select {
+    width: 100%;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input:focus, .field select:focus {
+    border-color: var(--accent);
+  }
+  .field input::placeholder { color: var(--muted); }
+  .field select option { background: #1a1d24; }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* Level cards */
+  .level-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .level-card {
+    background: var(--card2);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .level-card:hover { border-color: var(--muted); }
+  .level-card.selected { border-color: var(--accent); background: rgba(110,231,183,0.06); }
+  .level-card .lc-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .level-card .lc-icon { font-size: 20px; }
+  .level-card .lc-name {
+    font-weight: 700;
+    font-size: 15px;
+  }
+  .level-card .lc-badge {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: var(--border);
+    color: var(--muted2);
+  }
+  .level-card.selected .lc-badge {
+    background: var(--accent);
+    color: #0e1015;
+  }
+  .level-card .lc-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .level-card .lc-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .level-card .lc-tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: var(--border);
+    color: var(--muted2);
+  }
+
+  /* Frequency picker */
+  .freq-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .freq-btn {
+    flex: 1;
+    min-width: 44px;
+    padding: 12px 8px;
+    background: var(--card2);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  .freq-btn:hover { border-color: var(--muted); }
+  .freq-btn.selected { border-color: var(--accent); background: rgba(110,231,183,0.08); color: var(--accent); }
+
+  /* Day picker */
+  .day-picker {
+    margin-bottom: 6px;
+  }
+  .day-picker-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted2);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .days-row {
+    display: flex;
+    gap: 6px;
+  }
+  .day-btn {
+    flex: 1;
+    padding: 10px 4px;
+    background: var(--card2);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  .day-btn:hover { border-color: var(--muted); color: var(--text); }
+  .day-btn.selected { border-color: var(--accent); background: rgba(110,231,183,0.08); color: var(--accent); }
+  .day-btn.rest {
+    border-color: transparent;
+    background: transparent;
+    color: var(--border);
+    cursor: default;
+    font-size: 10px;
+  }
+  .day-hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+    line-height: 1.4;
+  }
+
+  /* Feasibility box */
+  .feasibility {
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    display: none;
+  }
+  .feasibility.ok     { background: rgba(110,231,183,0.08); border: 1px solid rgba(110,231,183,0.3); color: var(--accent); }
+  .feasibility.warn   { background: rgba(251,191,36,0.08);  border: 1px solid rgba(251,191,36,0.3);  color: var(--warn); }
+  .feasibility.danger { background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.3); color: var(--danger); }
+  .feasibility .fi-title { font-weight: 700; margin-bottom: 4px; }
+
+  /* Injury tags */
+  .injury-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .inj-tag {
+    padding: 8px 14px;
+    border-radius: 20px;
+    background: var(--card2);
+    border: 2px solid var(--border);
+    color: var(--muted2);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .inj-tag:hover { border-color: var(--muted); color: var(--text); }
+  .inj-tag.selected { border-color: var(--accent2); background: rgba(129,140,248,0.08); color: var(--accent2); }
+  .inj-tag[data-injury="none"].selected { border-color: var(--accent); background: rgba(110,231,183,0.08); color: var(--accent); }
+
+  /* Sync options */
+  .sync-opts {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .sync-opt {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--card2);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .sync-opt:hover { border-color: var(--muted); }
+  .sync-opt.selected { border-color: var(--accent2); background: rgba(129,140,248,0.06); }
+  .sync-opt .so-icon { font-size: 20px; }
+  .sync-opt .so-text .so-name { font-weight: 600; font-size: 14px; }
+  .sync-opt .so-text .so-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* Buttons */
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 24px;
+  }
+  .btn {
+    flex: 1;
+    padding: 14px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #34d399);
+    color: #0e1015;
+  }
+  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-ghost {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    color: var(--muted2);
+    flex: 0 0 auto;
+    padding: 14px 20px;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+  .btn-finish {
+    background: linear-gradient(135deg, var(--accent2), #6366f1);
+    color: #fff;
+  }
+  .btn-finish:hover { opacity: 0.9; transform: translateY(-1px); }
+
+  /* Success screen */
+  .success-screen {
+    text-align: center;
+    padding: 12px 0;
+  }
+  .success-screen .s-icon { font-size: 52px; margin-bottom: 16px; }
+  .success-screen .s-title { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
+  .success-screen .s-desc { color: var(--muted); font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+  .plan-summary {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    text-align: left;
+    margin-bottom: 20px;
+  }
+  .plan-summary .ps-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .plan-summary .ps-row:last-child { border-bottom: none; }
+  .plan-summary .ps-label { color: var(--muted); }
+  .plan-summary .ps-val { font-weight: 600; color: var(--text); }
+  .plan-summary .ps-val.accent { color: var(--accent); }
+  .plan-summary .ps-val.warn { color: var(--warn); }
+
+  /* Step counter */
+  .step-counter {
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  /* Mockup banner */
+  .mockup-banner {
+    background: rgba(129,140,248,0.1);
+    border: 1px solid rgba(129,140,248,0.3);
+    border-radius: 10px;
+    padding: 10px 14px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--accent2);
+    margin-bottom: 20px;
+    font-weight: 500;
+  }
+
+  textarea {
+    width: 100%;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 80px;
+    outline: none;
+  }
+  textarea:focus { border-color: var(--accent2); }
+  textarea::placeholder { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="wizard-shell">
+
+  <div class="mockup-banner">
+    MOCKUP — This is a preview of the new signup flow. No data is saved.
+  </div>
+
+  <div class="wizard-header">
+    <div class="logo">Hyrox Coach</div>
+    <div class="sub">Let's build your personalised training plan</div>
+  </div>
+
+  <!-- Progress dots: 7 steps + success -->
+  <div class="progress-dots" id="progressDots">
+    <div class="dot active" id="dot0"></div>
+    <div class="dot" id="dot1"></div>
+    <div class="dot" id="dot2"></div>
+    <div class="dot" id="dot3"></div>
+    <div class="dot" id="dot4"></div>
+    <div class="dot" id="dot5"></div>
+    <div class="dot" id="dot6"></div>
+  </div>
+
+  <div class="step-counter" id="stepCounter">Step 1 of 7</div>
+
+  <!-- ── STEP 0: Basic Profile ─────────────────────────────────── -->
+  <div class="step active" id="step0">
+    <div class="step-label">Step 1 — About you</div>
+    <div class="step-title">Let's get started</div>
+    <div class="step-desc">A few basics so we can personalise your plan.</div>
+
+    <div class="field">
+      <label>Your name</label>
+      <input type="text" id="wz_name" placeholder="First name" />
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Age</label>
+        <input type="number" id="wz_age" placeholder="e.g. 32" min="16" max="80" />
+      </div>
+      <div class="field">
+        <label>Gender</label>
+        <select id="wz_gender">
+          <option value="">Select…</option>
+          <option value="m">Male</option>
+          <option value="f">Female</option>
+          <option value="other">Prefer not to say</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="goStep(1)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 1: Race Details ──────────────────────────────────── -->
+  <div class="step" id="step1">
+    <div class="step-label">Step 2 — Your race</div>
+    <div class="step-title">Tell us about your race</div>
+    <div class="step-desc">We'll build your plan backwards from race day.</div>
+
+    <div class="field">
+      <label>Race date</label>
+      <input type="date" id="wz_race_date" value="2026-07-05" />
+    </div>
+    <div class="field">
+      <label>Race category</label>
+      <select id="wz_category">
+        <option value="">Select your category…</option>
+        <option value="open_men">Open Men</option>
+        <option value="open_women">Open Women</option>
+        <option value="pro_men">Pro Men</option>
+        <option value="pro_women">Pro Women</option>
+        <option value="doubles_men">Doubles Men</option>
+        <option value="doubles_women">Doubles Women</option>
+        <option value="doubles_mixed">Doubles Mixed</option>
+        <option value="relay">Relay</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Plan start date</label>
+      <input type="date" id="wz_plan_start" value="2026-05-18" />
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep(0)">← Back</button>
+      <button class="btn btn-primary" onclick="goStep(2)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 2: Training Level ────────────────────────────────── -->
+  <div class="step" id="step2">
+    <div class="step-label">Step 3 — Your experience</div>
+    <div class="step-title">What's your training level?</div>
+    <div class="step-desc">This shapes how we ramp up your plan and set your starting targets.</div>
+
+    <div class="level-cards">
+      <div class="level-card" id="lc_beginner" onclick="selectLevel('beginner')">
+        <div class="lc-header">
+          <span class="lc-icon">🌱</span>
+          <span class="lc-name">Beginner</span>
+          <span class="lc-badge">START FRESH</span>
+        </div>
+        <div class="lc-desc">Little or no structured training. We'll ease you in gradually — building a base before adding Hyrox-specific intensity.</div>
+        <div class="lc-tags">
+          <span class="lc-tag">Slow build</span>
+          <span class="lc-tag">Lower starting targets</span>
+          <span class="lc-tag">More recovery</span>
+        </div>
+      </div>
+
+      <div class="level-card" id="lc_intermediate" onclick="selectLevel('intermediate')">
+        <div class="lc-header">
+          <span class="lc-icon">🔥</span>
+          <span class="lc-name">Intermediate</span>
+          <span class="lc-badge">ACTIVE & TRAINING</span>
+        </div>
+        <div class="lc-desc">You train regularly or are mid-preparation, but want a Hyrox-specific structure to sharpen your performance.</div>
+        <div class="lc-tags">
+          <span class="lc-tag">Moderate start</span>
+          <span class="lc-tag">Standard progression</span>
+          <span class="lc-tag">Benchmark week 1</span>
+        </div>
+      </div>
+
+      <div class="level-card" id="lc_advanced" onclick="selectLevel('advanced')">
+        <div class="lc-header">
+          <span class="lc-icon">⚡</span>
+          <span class="lc-name">Advanced</span>
+          <span class="lc-badge">HYROX TRAINED</span>
+        </div>
+        <div class="lc-desc">You've been training Hyrox consistently. We'll start at high intensity and fine-tune toward your goal time.</div>
+        <div class="lc-tags">
+          <span class="lc-tag">High intensity from day 1</span>
+          <span class="lc-tag">Faster targets</span>
+          <span class="lc-tag">Less ramp-up</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep(1)">← Back</button>
+      <button class="btn btn-primary" onclick="goStep(3)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 3: Schedule ──────────────────────────────────────── -->
+  <div class="step" id="step3">
+    <div class="step-label">Step 4 — Your schedule</div>
+    <div class="step-title">When can you train?</div>
+    <div class="step-desc">We'll slot workouts into your chosen days. Rest days are always protected.</div>
+
+    <div class="field">
+      <label>Days per week</label>
+      <div class="freq-row" id="freqRow">
+        <div class="freq-btn" onclick="selectFreq(1)">1</div>
+        <div class="freq-btn" onclick="selectFreq(2)">2</div>
+        <div class="freq-btn" onclick="selectFreq(3)">3</div>
+        <div class="freq-btn" onclick="selectFreq(4)">4</div>
+        <div class="freq-btn" onclick="selectFreq(5)">5</div>
+        <div class="freq-btn" onclick="selectFreq(6)">6</div>
+      </div>
+    </div>
+
+    <div class="day-picker" id="dayPickerSection" style="display:none">
+      <div class="day-picker-label">Which days? <span id="dayPickerSubtitle" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+      <div class="days-row">
+        <div class="day-btn" data-day="Mon" onclick="toggleDay(this)">Mon</div>
+        <div class="day-btn" data-day="Tue" onclick="toggleDay(this)">Tue</div>
+        <div class="day-btn" data-day="Wed" onclick="toggleDay(this)">Wed</div>
+        <div class="day-btn" data-day="Thu" onclick="toggleDay(this)">Thu</div>
+        <div class="day-btn" data-day="Fri" onclick="toggleDay(this)">Fri</div>
+        <div class="day-btn" data-day="Sat" onclick="toggleDay(this)">Sat</div>
+        <div class="day-btn" data-day="Sun" onclick="toggleDay(this)">Sun</div>
+      </div>
+      <div class="day-hint" id="dayHint"></div>
+    </div>
+
+    <div class="btn-row" style="margin-top:24px">
+      <button class="btn btn-ghost" onclick="goStep(2)">← Back</button>
+      <button class="btn btn-primary" onclick="goStep(4)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 4: Goal Time ─────────────────────────────────────── -->
+  <div class="step" id="step4">
+    <div class="step-label">Step 5 — Your goal</div>
+    <div class="step-title">What's your goal time?</div>
+    <div class="step-desc">We'll tailor pace targets to help you hit this. We'll tell you if it's realistic given your timeline.</div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>Hours</label>
+        <select id="wz_goal_h">
+          <option value="0">0</option>
+          <option value="1" selected>1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Minutes</label>
+        <select id="wz_goal_m">
+          <option value="0">00</option>
+          <option value="5">05</option>
+          <option value="10">10</option>
+          <option value="15">15</option>
+          <option value="20">20</option>
+          <option value="25">25</option>
+          <option value="30" selected>30</option>
+          <option value="35">35</option>
+          <option value="40">40</option>
+          <option value="45">45</option>
+          <option value="50">50</option>
+          <option value="55">55</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="feasibility" id="feasBox">
+      <div class="fi-title" id="feasTitle"></div>
+      <div id="feasBody"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep(3)">← Back</button>
+      <button class="btn btn-primary" onclick="goStep(5)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 5: Injuries ──────────────────────────────────────── -->
+  <div class="step" id="step5">
+    <div class="step-label">Step 6 — Physical history</div>
+    <div class="step-title">Any injuries or niggles?</div>
+    <div class="step-desc">We'll adapt warm-ups, cool-downs, and recovery sessions to protect you.</div>
+
+    <div class="injury-tags" id="injuryTags">
+      <div class="inj-tag" data-injury="none" onclick="toggleInjury(this)">✓ No injuries</div>
+      <div class="inj-tag" data-injury="knee" onclick="toggleInjury(this)">Knee</div>
+      <div class="inj-tag" data-injury="hip" onclick="toggleInjury(this)">Hip</div>
+      <div class="inj-tag" data-injury="back" onclick="toggleInjury(this)">Lower back</div>
+      <div class="inj-tag" data-injury="shoulder" onclick="toggleInjury(this)">Shoulder</div>
+      <div class="inj-tag" data-injury="ankle" onclick="toggleInjury(this)">Ankle</div>
+      <div class="inj-tag" data-injury="other" onclick="toggleInjury(this)">Other</div>
+    </div>
+
+    <div class="field" id="injuryTextField" style="display:none">
+      <label>Tell us more (optional)</label>
+      <textarea id="wz_injury_text" placeholder="e.g. Left knee patella tendon, aggravated by running downhill…"></textarea>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep(4)">← Back</button>
+      <button class="btn btn-primary" onclick="goStep(6)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 6: Sync Method ───────────────────────────────────── -->
+  <div class="step" id="step6">
+    <div class="step-label">Step 7 — Sync your workouts</div>
+    <div class="step-title">How do you track training?</div>
+    <div class="step-desc">We'll pull your actual pace and HR data to refine your plan automatically. You can change this later.</div>
+
+    <div class="sync-opts">
+      <div class="sync-opt selected" id="so_manual" onclick="selectSync('manual')">
+        <span class="so-icon">✍️</span>
+        <div class="so-text">
+          <div class="so-name">Manual</div>
+          <div class="so-desc">Log how it felt after each session — we'll adjust from there</div>
+        </div>
+      </div>
+      <div class="sync-opt" id="so_intervals" onclick="selectSync('intervals_icu')">
+        <span class="so-icon">📊</span>
+        <div class="so-text">
+          <div class="so-name">Intervals.icu</div>
+          <div class="so-desc">Auto-sync pace, HR and lap data from your Garmin or Wahoo</div>
+        </div>
+      </div>
+      <div class="sync-opt" id="so_upload" onclick="selectSync('file_upload')">
+        <span class="so-icon">📁</span>
+        <div class="so-text">
+          <div class="so-name">File / Screenshot upload</div>
+          <div class="so-desc">Upload a GPX, TCX, FIT file or screenshot after each session</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep(5)">← Back</button>
+      <button class="btn btn-finish" onclick="goSuccess()">Build my plan →</button>
+    </div>
+  </div>
+
+  <!-- ── SUCCESS ───────────────────────────────────────────────── -->
+  <div class="step" id="stepSuccess">
+    <div class="success-screen">
+      <div class="s-icon">🎯</div>
+      <div class="s-title">Your plan is ready</div>
+      <div class="s-desc">Here's what we've built for you. Everything can be adjusted in your profile at any time.</div>
+
+      <div class="plan-summary" id="planSummary">
+        <!-- filled by JS -->
+      </div>
+
+      <button class="btn btn-finish" style="width:100%" onclick="alert('In the real app this opens the dashboard.')">Let's go →</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────
+  let currentStep = 0;
+  const totalSteps = 7;
+  let selectedLevel = null;
+  let selectedFreq  = null;
+  let selectedDays  = new Set();
+  let selectedSync  = 'manual';
+
+  // ── Navigation ─────────────────────────────────────────────────
+  function goStep(n) {
+    document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+    if (n >= totalSteps) { showSuccess(); return; }
+    document.getElementById('step' + n).classList.add('active');
+    currentStep = n;
+    updateDots();
+    document.getElementById('stepCounter').textContent = `Step ${n + 1} of ${totalSteps}`;
+
+    if (n === 4) runFeasibility();
+  }
+
+  function showSuccess() {
+    document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+    document.getElementById('stepSuccess').classList.add('active');
+    document.getElementById('progressDots').style.display = 'none';
+    document.getElementById('stepCounter').textContent = 'All done!';
+    buildSummary();
+  }
+
+  function updateDots() {
+    for (let i = 0; i < totalSteps; i++) {
+      const d = document.getElementById('dot' + i);
+      if (!d) continue;
+      d.className = 'dot' + (i === currentStep ? ' active' : i < currentStep ? ' done' : '');
+    }
+  }
+
+  // ── Level picker ───────────────────────────────────────────────
+  function selectLevel(level) {
+    selectedLevel = level;
+    document.querySelectorAll('.level-card').forEach(c => c.classList.remove('selected'));
+    document.getElementById('lc_' + level).classList.add('selected');
+  }
+
+  // ── Frequency picker ───────────────────────────────────────────
+  function selectFreq(n) {
+    selectedFreq = n;
+    document.querySelectorAll('.freq-btn').forEach((b, i) => {
+      b.classList.toggle('selected', i + 1 === n);
+    });
+    selectedDays.clear();
+    document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('selected'));
+    document.getElementById('dayPickerSection').style.display = 'block';
+    document.getElementById('dayPickerSubtitle').textContent = `— pick ${n} day${n > 1 ? 's' : ''}`;
+    updateDayHint();
+  }
+
+  function toggleDay(btn) {
+    const day = btn.dataset.day;
+    if (selectedDays.has(day)) {
+      selectedDays.delete(day);
+      btn.classList.remove('selected');
+    } else {
+      if (selectedDays.size >= selectedFreq) {
+        // deselect oldest
+        const first = [...selectedDays][0];
+        selectedDays.delete(first);
+        document.querySelector(`.day-btn[data-day="${first}"]`).classList.remove('selected');
+      }
+      selectedDays.add(day);
+      btn.classList.add('selected');
+    }
+    updateDayHint();
+  }
+
+  function updateDayHint() {
+    const hint = document.getElementById('dayHint');
+    if (!selectedFreq) return;
+    const remaining = selectedFreq - selectedDays.size;
+    const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const sorted = [...selectedDays].sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+    if (remaining > 0) {
+      hint.textContent = `Select ${remaining} more day${remaining > 1 ? 's' : ''}`;
+      hint.style.color = 'var(--muted)';
+    } else {
+      const restDays = dayOrder.filter(d => !selectedDays.has(d));
+      hint.innerHTML = `<span style="color:var(--accent)">Training days: ${sorted.join(', ')}</span><br>Rest / recovery: ${restDays.join(', ')}`;
+    }
+  }
+
+  // ── Sync picker ────────────────────────────────────────────────
+  function selectSync(method) {
+    selectedSync = method;
+    document.querySelectorAll('.sync-opt').forEach(el => el.classList.remove('selected'));
+    document.getElementById('so_' + method).classList.add('selected');
+  }
+
+  // ── Injury picker ──────────────────────────────────────────────
+  function toggleInjury(el) {
+    const inj = el.dataset.injury;
+    if (inj === 'none') {
+      document.querySelectorAll('.inj-tag').forEach(t => t.classList.remove('selected'));
+      el.classList.add('selected');
+      document.getElementById('injuryTextField').style.display = 'none';
+      return;
+    }
+    document.querySelector('.inj-tag[data-injury="none"]').classList.remove('selected');
+    el.classList.toggle('selected');
+    const anySelected = [...document.querySelectorAll('.inj-tag.selected')].length > 0;
+    document.getElementById('injuryTextField').style.display = anySelected ? 'block' : 'none';
+  }
+
+  // ── Feasibility check ──────────────────────────────────────────
+  function runFeasibility() {
+    const box = document.getElementById('feasBox');
+    const raceDate  = new Date(document.getElementById('wz_race_date').value + 'T00:00:00');
+    const startDate = new Date(document.getElementById('wz_plan_start').value + 'T00:00:00');
+    const today = new Date();
+    const effectiveStart = startDate < today ? today : startDate;
+    const weeksAvail = Math.floor((raceDate - effectiveStart) / (7 * 86400000));
+    const freq = selectedFreq || 3;
+    const level = selectedLevel || 'intermediate';
+    const goalMins = parseInt(document.getElementById('wz_goal_h').value) * 60 +
+                     parseInt(document.getElementById('wz_goal_m').value);
+
+    // Rough achievability model (illustrative, not medical advice)
+    // Returns estimated finish time range in minutes
+    const basePace = { beginner: 165, intermediate: 105, advanced: 75 }[level];
+    const weekFactor = Math.min(1, weeksAvail / 8);        // more weeks = better
+    const freqFactor = Math.min(1, (freq - 1) / 4);       // more days = better
+    const achievable = Math.round(basePace - (basePace - 60) * weekFactor * freqFactor * 0.7);
+    const achievableRange = [achievable - 5, achievable + 10];
+
+    const title = document.getElementById('feasTitle');
+    const body = document.getElementById('feasBody');
+    box.style.display = 'block';
+
+    if (weeksAvail < 2) {
+      box.className = 'feasibility danger';
+      title.textContent = '⚠️ Very little time before race day';
+      body.textContent = `Only ${weeksAvail} week${weeksAvail !== 1 ? 's' : ''} available. We'll give you the best possible prep, but set realistic expectations — aim for completing the race and enjoying the experience.`;
+    } else if (goalMins < achievableRange[0]) {
+      box.className = 'feasibility warn';
+      title.textContent = '⚡ Ambitious goal — possible, but tight';
+      body.innerHTML = `Based on your level, ${weeksAvail} weeks, and ${freq}×/week training, a realistic target is around <strong>${Math.floor(achievableRange[0]/60)}h ${achievableRange[0]%60}m – ${Math.floor(achievableRange[1]/60)}h ${achievableRange[1]%60}m</strong>. Your goal of <strong>${Math.floor(goalMins/60)}h ${goalMins%60}m</strong> is achievable with strong execution — we'll build toward it. Consider adjusting if you want a safer target.`;
+    } else if (goalMins > achievableRange[1] + 20) {
+      box.className = 'feasibility ok';
+      title.textContent = '✓ Conservative goal — great foundation';
+      body.innerHTML = `With ${weeksAvail} weeks and your experience level, we estimate you could push for <strong>${Math.floor(achievableRange[0]/60)}h ${achievableRange[0]%60}m</strong>. Your goal of <strong>${Math.floor(goalMins/60)}h ${goalMins%60}m</strong> is very achievable — you may want to be more ambitious!`;
+    } else {
+      box.className = 'feasibility ok';
+      title.textContent = '✓ Goal looks well-matched';
+      body.innerHTML = `With ${weeksAvail} weeks of training at ${freq} day${freq > 1 ? 's' : ''}/week, your goal of <strong>${Math.floor(goalMins/60)}h ${goalMins%60}m</strong> aligns well with your experience level. We'll build the plan to get you there.`;
+    }
+  }
+
+  // Update feasibility live as goal changes
+  document.getElementById('wz_goal_h').addEventListener('change', () => { if (currentStep === 4) runFeasibility(); });
+  document.getElementById('wz_goal_m').addEventListener('change', () => { if (currentStep === 4) runFeasibility(); });
+
+  // ── Summary screen ─────────────────────────────────────────────
+  function buildSummary() {
+    const name = document.getElementById('wz_name').value || 'Athlete';
+    const raceDate  = document.getElementById('wz_race_date').value;
+    const startDate = document.getElementById('wz_plan_start').value;
+    const goalH = parseInt(document.getElementById('wz_goal_h').value);
+    const goalM = parseInt(document.getElementById('wz_goal_m').value);
+    const catMap = {
+      open_men:'Open Men', open_women:'Open Women', pro_men:'Pro Men', pro_women:'Pro Women',
+      doubles_men:'Doubles Men', doubles_women:'Doubles Women', doubles_mixed:'Doubles Mixed', relay:'Relay'
+    };
+    const cat = catMap[document.getElementById('wz_category').value] || '—';
+    const levelMap = { beginner:'🌱 Beginner', intermediate:'🔥 Intermediate', advanced:'⚡ Advanced' };
+    const lvl = levelMap[selectedLevel] || '—';
+    const daysArr = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const sorted = [...selectedDays].sort((a,b) => daysArr.indexOf(a) - daysArr.indexOf(b));
+    const syncMap = { manual:'Manual logging', intervals_icu:'Intervals.icu', file_upload:'File / Screenshot' };
+
+    const weeks = Math.floor((new Date(raceDate) - new Date(startDate)) / (7 * 86400000));
+
+    const injuries = [...document.querySelectorAll('.inj-tag.selected')]
+      .map(t => t.dataset.injury).filter(t => t !== 'none');
+
+    const raceBox = document.getElementById('feasBox');
+    const feasClass = raceBox.className.includes('warn') ? 'warn' : 'accent';
+
+    document.getElementById('planSummary').innerHTML = `
+      <div class="ps-row"><span class="ps-label">Athlete</span><span class="ps-val">${name}</span></div>
+      <div class="ps-row"><span class="ps-label">Race date</span><span class="ps-val">${raceDate}</span></div>
+      <div class="ps-row"><span class="ps-label">Category</span><span class="ps-val">${cat}</span></div>
+      <div class="ps-row"><span class="ps-label">Plan length</span><span class="ps-val">${weeks} weeks (from ${startDate})</span></div>
+      <div class="ps-row"><span class="ps-label">Level</span><span class="ps-val">${lvl}</span></div>
+      <div class="ps-row"><span class="ps-label">Training days</span><span class="ps-val">${sorted.length ? sorted.join(', ') : (selectedFreq || '—') + '×/week'}</span></div>
+      <div class="ps-row"><span class="ps-label">Goal time</span><span class="ps-val ${feasClass}">${goalH}h ${goalM < 10 ? '0'+goalM : goalM}m</span></div>
+      <div class="ps-row"><span class="ps-label">Injuries</span><span class="ps-val">${injuries.length ? injuries.join(', ') : 'None'}</span></div>
+      <div class="ps-row"><span class="ps-label">Sync method</span><span class="ps-val">${syncMap[selectedSync]}</span></div>
+    `;
+  }
+</script>
+
+</body>
+</html>
