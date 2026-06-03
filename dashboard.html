@@ -361,10 +361,20 @@
 <script>
 // ── Plan data ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_RACE_DATE_STR  = '2026-07-05';
-const DEFAULT_PLAN_START_STR = '2026-05-18';
+// Default dates: plan start = today, race = 8 weeks from today.
+// These are only used as fallbacks when userProfile has no saved dates.
+function _isoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+const DEFAULT_PLAN_START_STR = _isoDate(new Date());
+const DEFAULT_RACE_DATE_STR  = (() => { const d = new Date(); d.setDate(d.getDate() + 56); return _isoDate(d); })();
 let RACE_DATE  = new Date(DEFAULT_RACE_DATE_STR  + 'T00:00:00');
 let PLAN_START = new Date(DEFAULT_PLAN_START_STR + 'T00:00:00');
+
+// Total plan weeks derived from actual dates (used for "Week X of N" and strip cap)
+function totalPlanWeeks() {
+  return Math.max(1, Math.ceil((RACE_DATE - PLAN_START) / (7 * 86400000)));
+}
 
 const PACE_TARGETS = {
   1: { easy: '6:25', tempo: '6:10', intervals: '5:55' },
@@ -373,6 +383,7 @@ const PACE_TARGETS = {
   4: { easy: '6:00', tempo: '5:45', intervals: '5:30' },
   5: { easy: '6:00', tempo: '5:45', intervals: '5:30' },
   6: { easy: '6:15', tempo: '6:00', intervals: '5:30' },
+  // Weeks beyond 6: use taper targets (same as week 6)
 };
 
 // SIM_STATIONS and SIM_DISTANCES are now embedded directly in SESSION_TEMPLATE_DATA
@@ -525,7 +536,7 @@ function getWeekWeightPct(week) {
 // ── Session templates ─────────────────────────────────────────────────────────
 // planDay = days offset from plan_start (0-indexed).
 // buildSessionMap() turns these into date-keyed SESSIONS based on userProfile.plan_start.
-// Existing users (Koobie, plan_start=2026-05-18): same date keys as before — zero data loss.
+// Existing users whose plan_start matches the baked-in dates get identical keys — zero data loss.
 const SESSION_TEMPLATE_DATA = {
   // ── WEEK 1 ──
   0: { rest: true, restMsg: 'Plan starts tomorrow. Prep your gym kit and read through Week 1.' },
@@ -1292,6 +1303,10 @@ function showWizard() {
   document.querySelectorAll('.injury-tag').forEach(t => t.classList.remove('selected'));
   document.querySelector('.injury-tag[data-injury="none"]')?.classList.add('selected');
 
+  // Always seed date fields with current defaults (so HTML blank inputs get a value)
+  document.getElementById('wzRaceDate').value  = DEFAULT_RACE_DATE_STR;
+  document.getElementById('wzPlanStart').value = DEFAULT_PLAN_START_STR;
+
   if (userProfile) {
     document.getElementById('wzName').value = userProfile.name || '';
     document.getElementById('wzAge').value  = userProfile.age  || '';
@@ -1449,8 +1464,8 @@ async function wizardFinish() {
     name:             document.getElementById('wzName')?.value?.trim() || '',
     age:              parseInt(document.getElementById('wzAge')?.value) || null,
     goal_time_min:    parseInt(document.getElementById('wzGoal')?.value) || 90,
-    race_date:        document.getElementById('wzRaceDate')?.value || '2026-07-05',
-    plan_start:       document.getElementById('wzPlanStart')?.value || '2026-05-18',
+    race_date:        document.getElementById('wzRaceDate')?.value || DEFAULT_RACE_DATE_STR,
+    plan_start:       document.getElementById('wzPlanStart')?.value || DEFAULT_PLAN_START_STR,
     race_category:    document.getElementById('wzCategory')?.value || null,
     training_level:   wizardTrainingLevel || 'intermediate',
     sessions_per_week:wizardFreq || null,
@@ -1572,7 +1587,9 @@ function levelPaceOffsetSec() {
 }
 
 function adjustedPace(week, key, addSecs) {
-  const base = PACE_TARGETS[week]?.[key];
+  // Clamp to max defined week so plans longer than 6 weeks still get valid targets
+  const clampedWeek = Math.min(week, Math.max(...Object.keys(PACE_TARGETS).map(Number)));
+  const base = PACE_TARGETS[clampedWeek]?.[key];
   if (!base) return '–';
   const adj = (state.paceAdj[week] || 0) + (addSecs || 0) + levelPaceOffsetSec();
   const [m, s] = base.split(':').map(Number);
@@ -1848,19 +1865,20 @@ function renderHeader() {
   document.getElementById('headerDate').textContent = formatDate(viewDate);
   const week = getWeekNum(viewDate);
   const session = SESSIONS[viewDate];
-  const wkLabel = session && !session.rest ? `Week ${week} of 6` : `Week ${week} — Rest Day`;
+  const wkLabel = session && !session.rest ? `Week ${week} of ${totalPlanWeeks()}` : `Week ${week} — Rest Day`;
   document.getElementById('headerWeek').textContent = wkLabel;
 }
 
 function renderWeekStrip() {
   const todayWeek = getWeekNum(today());
-  const firstWeek = Math.max(1, Math.min(todayWeek + weekStripOffset, 5));
+  const lastWeek = totalPlanWeeks();
+  const firstWeek = Math.max(1, Math.min(todayWeek + weekStripOffset, lastWeek - 1));
   const strip = document.getElementById('weekStrip');
   strip.innerHTML = '';
   const dayAbbr = ['S','M','T','W','T','F','S']; // indexed by Date.getDay() (0=Sun)
 
   for (let w = firstWeek; w <= firstWeek + 1; w++) {
-    if (w > 6) break;
+    if (w > lastWeek) break;
     const weekStart = new Date(PLAN_START.getTime() + (w - 1) * 7 * 86400000);
     let weekLabel;
     if (w === todayWeek)     weekLabel = 'This week';
@@ -3209,7 +3227,7 @@ function downloadICS() {
       <p class="wizard-sub">This personalises your pace targets and race projection.</p>
       <div class="wizard-field">
         <label class="wizard-label">Your name</label>
-        <input class="auth-input" id="wzName" type="text" placeholder="e.g. Koobie">
+        <input class="auth-input" id="wzName" type="text" placeholder="Your name">
       </div>
       <div class="wizard-field">
         <label class="wizard-label">Age</label>
@@ -3224,7 +3242,7 @@ function downloadICS() {
       <p class="wizard-sub">We'll build your plan backwards from race day.</p>
       <div class="wizard-field">
         <label class="wizard-label">Race date</label>
-        <input class="auth-input" id="wzRaceDate" type="date" value="2026-07-05">
+        <input class="auth-input" id="wzRaceDate" type="date">
       </div>
       <div class="wizard-field">
         <label class="wizard-label">Race category</label>
@@ -3242,7 +3260,7 @@ function downloadICS() {
       </div>
       <div class="wizard-field">
         <label class="wizard-label">Plan start date</label>
-        <input class="auth-input" id="wzPlanStart" type="date" value="2026-05-18">
+        <input class="auth-input" id="wzPlanStart" type="date">
       </div>
       <button class="wizard-next" onclick="wizardNext(1)">Next →</button>
     </div>
