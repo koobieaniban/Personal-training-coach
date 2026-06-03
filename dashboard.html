@@ -1216,7 +1216,7 @@ async function handleForgotPassword() {
 async function handleSignOut() {
   await sb.auth.signOut();
   document.getElementById('profileMenu').classList.add('hidden');
-  state = loadState();
+  state = { completions: {}, feedback: {}, paceAdj: {}, workoutData: {} };
   render();
 }
 
@@ -1857,7 +1857,7 @@ function renderWeekStrip() {
   const firstWeek = Math.max(1, Math.min(todayWeek + weekStripOffset, 5));
   const strip = document.getElementById('weekStrip');
   strip.innerHTML = '';
-  const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const dayAbbr = ['S','M','T','W','T','F','S']; // indexed by Date.getDay() (0=Sun)
 
   for (let w = firstWeek; w <= firstWeek + 1; w++) {
     if (w > 6) break;
@@ -1891,7 +1891,7 @@ function renderWeekStrip() {
 
       strip.innerHTML += `
         <div class="day-chip ${cls}" onclick="viewDate='${dk}';render()">
-          <div class="chip-label">${dayLabels[i]}</div>
+          <div class="chip-label">${dayAbbr[d.getDay()]}</div>
           <div class="chip-date">${d.getDate()}</div>
           <div class="chip-icon">${comp === 'done' ? '✓' : comp === 'skipped' ? '✗' : icon}</div>
         </div>`;
@@ -2057,8 +2057,10 @@ function renderSession() {
 
 function renderStats() {
   const el = document.getElementById('statsCard');
-  const doneCount = Object.values(state.completions).filter(v => v === 'done').length;
-  const totalSessions = Object.values(SESSIONS).filter(s => s && !s.rest).length;
+  // Only count completions for dates that actually exist in this user's plan
+  const planDates = new Set(Object.keys(SESSIONS).filter(d => SESSIONS[d] && !SESSIONS[d].rest));
+  const doneCount = Object.entries(state.completions).filter(([d, v]) => planDates.has(d) && v === 'done').length;
+  const totalSessions = planDates.size;
   const pct = Math.round(doneCount / totalSessions * 100);
 
   el.innerHTML = `<div class="stats-card">
