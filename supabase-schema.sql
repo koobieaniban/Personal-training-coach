@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS public.workout_data (
   UNIQUE(user_id, session_date)
 );
 
+-- ── Profile column additions (safe to re-run) ────────────────────────────────
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS race_category    TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS training_level   TEXT DEFAULT 'intermediate';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS sessions_per_week INTEGER;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS training_days    TEXT;
+ALTER TABLE public.session_feedback ADD COLUMN IF NOT EXISTS station_weights JSONB;
+
 -- ── Row Level Security ────────────────────────────────────────────────────────
 
 ALTER TABLE public.profiles        ENABLE ROW LEVEL SECURITY;

@@ -66,6 +66,8 @@
   .type-sim    { background: #2e1a1a; }
   .type-rest   { background: #1a1a1a; }
   .type-recovery { background: #0f2020; }
+  .type-station  { background: #1a2020; }
+  .type-emom     { background: #1e1a10; }
   .session-title { flex: 1; }
   .session-title h2 { font-size: 16px; font-weight: 700; }
   .session-title .session-subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -295,6 +297,12 @@
   .wizard-progress { display:flex; gap:6px; margin-bottom:20px; }
   .wizard-dot { height:4px; border-radius:2px; flex:1; background:var(--border); transition:all .2s; }
   .wizard-dot.done { background:var(--accent); }
+  .wz-freq-btn { flex:1; padding:10px 6px; background:var(--card2); border:2px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; font-weight:700; cursor:pointer; text-align:center; transition:all .2s; }
+  .wz-freq-btn:hover { border-color:var(--muted); }
+  .wz-freq-btn.selected { border-color:var(--accent); background:rgba(110,231,183,.08); color:var(--accent); }
+  .wz-day-btn { flex:1; padding:8px 2px; background:var(--card2); border:2px solid var(--border); border-radius:8px; color:var(--muted); font-size:11px; font-weight:700; cursor:pointer; text-align:center; transition:all .2s; }
+  .wz-day-btn:hover { border-color:var(--muted); color:var(--text); }
+  .wz-day-btn.selected { border-color:var(--accent); background:rgba(110,231,183,.08); color:var(--accent); }
   /* ── Sync status badge ── */
   .sync-badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:3px 8px; border-radius:10px; }
   .sync-badge.synced { background:#0d2018; color:var(--done); }
@@ -323,6 +331,7 @@
   </div>
   <div class="pace-bar" id="paceBar"></div>
   <div id="adjNotice"></div>
+  <div id="profilePromptBanner"></div>
 
   <div id="statsCard"></div>
   <div id="sessionArea"></div>
@@ -352,8 +361,10 @@
 <script>
 // ── Plan data ─────────────────────────────────────────────────────────────────
 
-const RACE_DATE  = new Date('2026-07-05T00:00:00');
-const PLAN_START = new Date('2026-05-18T00:00:00');
+const DEFAULT_RACE_DATE_STR  = '2026-07-05';
+const DEFAULT_PLAN_START_STR = '2026-05-18';
+let RACE_DATE  = new Date(DEFAULT_RACE_DATE_STR  + 'T00:00:00');
+let PLAN_START = new Date(DEFAULT_PLAN_START_STR + 'T00:00:00');
 
 const PACE_TARGETS = {
   1: { easy: '6:25', tempo: '6:10', intervals: '5:55' },
@@ -364,14 +375,9 @@ const PACE_TARGETS = {
   6: { easy: '6:15', tempo: '6:00', intervals: '5:30' },
 };
 
-// ── Sim station lists (for feedback form + analysis) ──────────────────────────
-const SIM_STATIONS = {
-  '2026-05-25': ['skierg','burpee','farmers'],
-  '2026-06-01': ['row','sled_push','skierg','wallball'],
-  '2026-06-08': ['skierg','sled_push','sled_pull','burpee','row','farmers'],
-  '2026-06-15': ['skierg','sled_push','sled_pull','burpee','row','farmers','lunges','wallball'],
-  '2026-06-22': ['skierg','sled_push','burpee','row','farmers','wallball'],
-};
+// SIM_STATIONS and SIM_DISTANCES are now embedded directly in SESSION_TEMPLATE_DATA
+// as .stations and .distances properties on each sim session.
+// Use SESSIONS[dateStr]?.stations and SESSIONS[dateStr]?.distances instead.
 
 const STATION_LABELS = {
   skierg:'SkiErg', sled_push:'Sled Push', sled_pull:'Sled Pull',
@@ -391,14 +397,6 @@ const STATION_RACE_SEC = {
   wallball:  { c:360, t:315, s:300 },
 };
 
-// ── Sim distances — run segment + station distances per sim date ──────────────
-const SIM_DISTANCES = {
-  '2026-05-25': { run_m: 500,  stations: { skierg: 500,  burpee: 40, farmers: 50  } },
-  '2026-06-01': { run_m: 1000, stations: { row: 500,    sled_push: 50, skierg: 500, wallball: 25 } },
-  '2026-06-08': { run_m: 1000, stations: { skierg: 500, sled_push: 50, sled_pull: 50, burpee: 40, row: 500, farmers: 100 } },
-  '2026-06-15': { run_m: 1000, stations: { skierg: 1000, sled_push: 50, sled_pull: 50, burpee: 80, row: 1000, farmers: 200, lunges: 100, wallball: 100 } },
-  '2026-06-22': { run_m: 1000, stations: { skierg: 500, sled_push: 50, burpee: 40, row: 500, farmers: 100, wallball: 50 } },
-};
 
 // Race distances for scaling sim splits → projected race times
 const STATION_RACE_DIST = {
@@ -496,24 +494,33 @@ function getCatWeights() {
 
 // Training weight targets ramp up over plan weeks (% of race weight)
 function getWeekWeightPct(week) {
+  const lvl = userProfile?.training_level;
+  if (lvl === 'beginner') {
+    if (week <= 2) return 0.50;
+    if (week <= 4) return 0.65;
+    if (week <= 5) return 0.80;
+    return 0.90;
+  }
+  if (lvl === 'advanced') {
+    if (week <= 2) return 0.80;
+    if (week <= 4) return 0.95;
+    return 1.0;
+  }
+  // intermediate / default
   if (week <= 2) return 0.65;
   if (week <= 4) return 0.80;
   if (week <= 5) return 0.90;
   return 1.0;
 }
-  sled_push: { label: 'Sled Push', unit: 'kg added', hint: 'weight added to sled' },
-  sled_pull: { label: 'Sled Pull', unit: 'kg added', hint: 'weight added to sled' },
-  farmers:   { label: 'Farmers Carry', unit: 'kg/hand', hint: 'per hand' },
-  wallball:  { label: 'Wall Balls', unit: 'kg ball', hint: 'ball weight' },
-  lunges:    { label: 'Sandbag Lunges', unit: 'kg bag', hint: 'sandbag weight' },
-};
 
-// Session definitions. paceRef: which pace to highlight today.
-// kneePhase: 1/2/3 or 'activation' (pre-run only)
-const SESSIONS = {
+// ── Session templates ─────────────────────────────────────────────────────────
+// planDay = days offset from plan_start (0-indexed).
+// buildSessionMap() turns these into date-keyed SESSIONS based on userProfile.plan_start.
+// Existing users (Koobie, plan_start=2026-05-18): same date keys as before — zero data loss.
+const SESSION_TEMPLATE_DATA = {
   // ── WEEK 1 ──
-  '2026-05-18': { rest: true, restMsg: 'Plan starts tomorrow. Prep your gym kit and read through Week 1.' },
-  '2026-05-19': {
+  0: { rest: true, restMsg: 'Plan starts tomorrow. Prep your gym kit and read through Week 1.' },
+  1: {
     week: 1, type: 'run', icon: '🏃', title: 'Run A — Reintroduction',
     subtitle: 'First run back. HR governs everything.',
     paceRef: 'easy', kneePhase: 'activation',
@@ -524,8 +531,8 @@ const SESSIONS = {
     ],
     note: 'No intervals this week. Week 1 Monday is pure aerobic reintroduction.',
   },
-  '2026-05-20': { rest: true, restMsg: 'Rest day. Light walk OK. Do your post-session knee recovery stretches.' },
-  '2026-05-21': {
+  2: { rest: true, restMsg: 'Rest day. Light walk OK. Do your post-session knee recovery stretches.' },
+  3: {
     week: 1, type: 'strength', icon: '🏠', title: 'Strength — Home Session',
     subtitle: 'Knee Block Phase 1 · DBs + bands only · no gym needed',
     kneePhase: 1,
@@ -539,8 +546,8 @@ const SESSIONS = {
     ],
     note: 'From Week 2 onward you\'ll be at the gym. This week: same stimulus, different tools.',
   },
-  '2026-05-22': { rest: true, restMsg: 'Rest day.' },
-  '2026-05-23': {
+  4: { rest: true, restMsg: 'Rest day.' },
+  5: {
     week: 1, type: 'run', icon: '🏃', title: 'Run B — Easy Aerobic',
     subtitle: 'HR-governed easy run. Build time on feet.',
     paceRef: 'easy', kneePhase: 'activation',
@@ -550,11 +557,11 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol (8 min): hip flexor lunge 90s each · IT band foam roll 60s each · calf stretch on step 60s each'] },
     ],
   },
-  '2026-05-24': { rest: true, restMsg: 'Rest day — Combined Intro moved to Monday 25 May (gym).' },
-
-  // ── WEEK 1 wraps up ──
-  '2026-05-25': {
+  6: { rest: true, restMsg: 'Rest day.' },
+  7: {
     week: 1, type: 'sim', icon: '🏋️', title: 'Combined Intro — Gym',
+    stations: ['skierg','burpee','farmers'],
+    distances: { run_m: 500, stations: { skierg: 500, burpee: 40, farmers: 50 } },
     subtitle: 'First time with actual gym kit. Run → Station habit.',
     paceRef: 'easy', kneePhase: 'activation',
     blocks: [
@@ -565,8 +572,8 @@ const SESSIONS = {
     note: 'Technique focus, not pace. First time on a real SkiErg — learn the hinge and arm extension. The run→station habit is what matters this week.',
   },
 
-  // ── WEEK 2 (Tue 26 May → Mon 1 Jun) ──
-  '2026-05-26': {
+  // ── WEEK 2 ──
+  8: {
     week: 2, type: 'recovery', icon: '🧘', title: 'Recovery — Full Body Flush',
     subtitle: '20 min. Mobility + soft tissue release.',
     blocks: [
@@ -575,7 +582,7 @@ const SESSIONS = {
     ],
     note: 'No intensity. This is how you absorb Monday\'s sim session.',
   },
-  '2026-05-27': {
+  9: {
     week: 2, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
     subtitle: 'HR-governed. Build time on feet.',
     paceRef: 'easy', kneePhase: 'activation',
@@ -585,7 +592,7 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-05-28': {
+  10: {
     week: 2, type: 'recovery', icon: '🧘', title: 'Recovery — Running Muscles',
     subtitle: '20 min. Focus on what runs use.',
     blocks: [
@@ -594,7 +601,7 @@ const SESSIONS = {
     ],
     note: 'Sets up your legs for Friday strength and Saturday hard run.',
   },
-  '2026-05-29': {
+  11: {
     week: 2, type: 'strength', icon: '💪', title: 'Strength + Stations',
     subtitle: 'Knee Block Phase 1 · Sled intro · Rowing intro',
     kneePhase: 1,
@@ -607,7 +614,7 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-05-30': {
+  12: {
     week: 2, type: 'run', icon: '🏃', title: 'Tempo Run — Introduction',
     subtitle: 'First proper tempo effort.',
     paceRef: 'tempo', kneePhase: 'activation',
@@ -617,9 +624,11 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-05-31': { rest: true, restMsg: 'Rest day. Well done on Week 2.' },
-  '2026-06-01': {
+  13: { rest: true, restMsg: 'Rest day. Well done on Week 2.' },
+  14: {
     week: 2, type: 'sim', icon: '🔥', title: 'Simulation — Short (4 Rounds)',
+    stations: ['row','sled_push','skierg','wallball'],
+    distances: { run_m: 1000, stations: { row: 500, sled_push: 50, skierg: 500, wallball: 25 } },
     subtitle: '4 rounds, one station each. First sled work.',
     paceRef: 'easy', kneePhase: 'activation',
     blocks: [
@@ -630,8 +639,8 @@ const SESSIONS = {
     note: 'First sled session — focus entirely on technique. Hip hinge, drive with legs, stay low.',
   },
 
-  // ── WEEK 3 (Tue 2 Jun → Mon 8 Jun) ──
-  '2026-06-02': {
+  // ── WEEK 3 ──
+  15: {
     week: 3, type: 'recovery', icon: '🧘', title: 'Recovery — Post-Sim Flush',
     subtitle: '20 min. Soft tissue and hip mobility.',
     blocks: [
@@ -639,7 +648,7 @@ const SESSIONS = {
       { title: 'Mobility (10 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Thoracic rotation 10 reps each side', 'Childs pose 60s'] },
     ],
   },
-  '2026-06-03': {
+  16: {
     week: 3, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
     subtitle: 'HR-governed. Week 3 aerobic base.',
     paceRef: 'easy', kneePhase: 'activation',
@@ -649,15 +658,19 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Easy 1km jog · Knee recovery protocol'] },
     ],
   },
-  '2026-06-04': {
-    week: 3, type: 'recovery', icon: '🧘', title: 'Recovery — Lower Body Release',
-    subtitle: '20 min. Prep legs for Friday strength.',
+  17: {
+    week: 3, type: 'station', icon: '🎯', title: 'Station Mastery — Skill Session',
+    subtitle: 'Isolated technique work — no running fatigue. Learn the movements before adding speed.',
     blocks: [
-      { title: 'Soft tissue (8 min)', items: ['Foam roll: hamstrings 60s each · glutes 60s each · calves 60s each'] },
-      { title: 'Mobility (12 min)', items: ['Standing quad stretch 60s each', 'Hip flexor lunge 90s each', 'Lateral hip stretch 60s each', 'Calf stretch on step 60s each'] },
+      { title: 'Warm-up (8 min)', items: ['500m SkiErg easy · hip circles · shoulder rolls'] },
+      { title: 'SkiErg — Rhythm & Technique (20 min)', items: ['4 × 500m @ conversational pace · 90s rest', 'Focus: full hip hinge, arms extend fully overhead before pulling, exhale on pull', 'Think "tall → hinge → pull" — not just arm rowing'] },
+      { title: 'Wall Balls — Metronome Drill (15 min)', items: ['Set phone metronome to 42 BPM', '5 × 20 reps in time with the beat — descent on one beat, throw on the next', 'Builds rhythm that survives fatigue in race conditions', 'Every rep: squat below parallel, throw above the line'] },
+      { title: 'Sled Tactics (15 min)', items: ['3 × 50m push @ race weight · low hips, short fast steps, drive through the ground', '3 × 50m pull @ race weight · smooth hand-over-hand, keep tension on the rope', 'Between sets: note which cues make the biggest difference'] },
+      { title: 'Farmers Carry — Transition Practice (10 min)', items: ['4 × 50m @ 2×24kg', 'Practice grip switch at 25m without stopping', 'Goal: no pace break at the changeover — saves 3–5 sec per carry in race'] },
     ],
+    note: 'JK principle: train stations in isolation before adding running fatigue. Today is the isolated phase — next week you integrate the run.',
   },
-  '2026-06-05': {
+  18: {
     week: 3, type: 'strength', icon: '💪', title: 'Strength + Hyrox Circuit',
     subtitle: 'Knee Block Phase 2 · Loaded sleds · Full circuit',
     kneePhase: 2,
@@ -670,7 +683,7 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-06': {
+  19: {
     week: 3, type: 'run', icon: '🏃', title: 'Intervals — 1km Repeats at Race Pace',
     subtitle: 'First time hitting 5:30/km target.',
     paceRef: 'intervals', kneePhase: 'activation',
@@ -680,9 +693,11 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Easy 1km jog · Knee recovery protocol'] },
     ],
   },
-  '2026-06-07': { rest: true, restMsg: 'Rest day.' },
-  '2026-06-08': {
+  20: { rest: true, restMsg: 'Rest day.' },
+  21: {
     week: 3, type: 'sim', icon: '🔥', title: 'Extended Simulation — 6 Rounds',
+    stations: ['skierg','sled_push','sled_pull','burpee','row','farmers'],
+    distances: { run_m: 1000, stations: { skierg: 500, sled_push: 50, sled_pull: 50, burpee: 40, row: 500, farmers: 100 } },
     subtitle: 'Loaded sleds · run→station transitions',
     paceRef: 'intervals', kneePhase: 'activation',
     blocks: [
@@ -692,8 +707,8 @@ const SESSIONS = {
     ],
   },
 
-  // ── WEEK 4 (Tue 9 Jun → Mon 15 Jun) ──
-  '2026-06-09': {
+  // ── WEEK 4 ──
+  22: {
     week: 4, type: 'recovery', icon: '🧘', title: 'Recovery — Post-Sim Flush',
     subtitle: '20 min. Peak week starts fresh.',
     blocks: [
@@ -702,7 +717,7 @@ const SESSIONS = {
     ],
     note: 'This week is your peak training week. Recovery today matters.',
   },
-  '2026-06-10': {
+  23: {
     week: 4, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
     subtitle: 'HR-governed easy run. Active recovery.',
     paceRef: 'easy', kneePhase: 'activation',
@@ -712,7 +727,7 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol + foam roll'] },
     ],
   },
-  '2026-06-11': {
+  24: {
     week: 4, type: 'recovery', icon: '🧘', title: 'Recovery — Full Body Prep',
     subtitle: '20 min. Set up for Friday big strength session.',
     blocks: [
@@ -720,7 +735,7 @@ const SESSIONS = {
       { title: 'Mobility (12 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Doorway chest stretch 60s', 'T-spine rotation 10 reps each side'] },
     ],
   },
-  '2026-06-12': {
+  25: {
     week: 4, type: 'strength', icon: '💪', title: 'Strength + Full Stations',
     subtitle: 'Knee Block Phase 2 · Full Hyrox circuit × 2',
     kneePhase: 2,
@@ -732,7 +747,7 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-13': {
+  26: {
     week: 4, type: 'run', icon: '🏃', title: 'Tempo + Row Intervals',
     subtitle: 'First standalone rowing session. Establish your race-day row pace.',
     paceRef: 'tempo', kneePhase: 'activation',
@@ -743,9 +758,11 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-14': { rest: true, restMsg: 'Rest day. Tomorrow is the full simulation — your biggest day.' },
-  '2026-06-15': {
+  27: { rest: true, restMsg: 'Rest day. Tomorrow is the full simulation — your biggest day.' },
+  28: {
     week: 4, type: 'sim', icon: '🔥', title: 'FULL HYROX SIMULATION 🏁',
+    stations: ['skierg','sled_push','sled_pull','burpee','row','farmers','lunges','wallball'],
+    distances: { run_m: 1000, stations: { skierg: 1000, sled_push: 50, sled_pull: 50, burpee: 80, row: 1000, farmers: 200, lunges: 100, wallball: 100 } },
     subtitle: 'Treat this like race day. All 8 runs + all 8 stations.',
     paceRef: 'intervals', kneePhase: 'activation',
     blocks: [
@@ -757,9 +774,10 @@ const SESSIONS = {
     note: 'This data tells us where to focus in Week 5. Log everything in the feedback form.',
   },
 
-  // ── WEEK 5 (Tue 16 Jun → Mon 22 Jun) ──
-  '2026-06-16': {
+  // ── WEEK 5 — Deload ──
+  29: {
     week: 5, type: 'recovery', icon: '🧘', title: 'Recovery — Most Important Session This Week',
+    deload: true,
     subtitle: '20 min. You just did your biggest week. Absorb it.',
     blocks: [
       { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 90s each · IT band 90s each · calves 60s each · upper back 60s', 'Lacrosse ball: glutes 90s each side'] },
@@ -767,28 +785,32 @@ const SESSIONS = {
     ],
     note: 'Do not train today. This session is the adaptation.',
   },
-  '2026-06-17': {
+  30: {
     week: 5, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
     subtitle: '5km easy + strides. Legs should feel alive by the end.',
-    paceRef: 'easy', kneePhase: 'activation',
+    paceRef: 'easy', kneePhase: 'activation', deload: true,
     blocks: [
       { title: 'Warm-up', items: ['Knee activation · 10 min easy walk/jog'] },
       { title: 'Main', items: ['5km easy @ [EASY]', '6 × 100m strides @ 4:30/km · walk back full recovery'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-18': {
-    week: 5, type: 'recovery', icon: '🧘', title: 'Recovery — Lower Body Release',
-    subtitle: '20 min. Prep legs for Friday strength.',
+  31: {
+    week: 5, type: 'emom', icon: '⏱️', title: 'Compromised Run EMOM — Benchmark',
+    subtitle: 'JK Hybrid signature benchmark. 8 rounds of 3 min. Run + burpees under fatigue.',
+    deload: false,
     blocks: [
-      { title: 'Soft tissue (8 min)', items: ['Foam roll: quads 60s each · hamstrings 60s each · calves 60s each'] },
-      { title: 'Mobility (12 min)', items: ['Hip flexor lunge 90s each', 'Standing quad stretch 60s each', 'Calf stretch on step 60s each', 'Lateral hip stretch 60s each'] },
+      { title: 'Warm-up (10 min)', items: ['1km easy jog · Knee activation · 2 × 100m strides'] },
+      { title: 'Benchmark — Every 3 min for 24 min (8 rounds)', items: ['400m run as fast as you can → max burpees until the 3-minute mark', 'Rest is whatever\'s left after burpees. Aim to finish 400m in ~90–100s.', 'Score = total burpees across all 8 rounds', 'Record: round-by-round run time + burpee count'] },
+      { title: 'Target scores', items: ['Beginner: 80–120 burpees total', 'Intermediate: 120–180 burpees total', 'Advanced: 180+ burpees · JK PB: 247'] },
+      { title: 'Cool-down', items: ['Easy 5 min walk · Knee recovery protocol'] },
     ],
+    note: 'This benchmark repeats in your final prep week. The score tracks your compromised-run fitness — the most Hyrox-specific quality you can build.',
   },
-  '2026-06-19': {
+  32: {
     week: 5, type: 'strength', icon: '💪', title: 'Strength + Stations (Moderate)',
     subtitle: 'Knee Block Phase 3 · Reduced volume, quality focus',
-    kneePhase: 3,
+    kneePhase: 3, deload: true,
     blocks: [
       { title: 'Warm-up', items: ['500m SkiErg easy'] },
       { title: 'Knee Block — Phase 3 (16 min, 3 rounds)', knee: true, items: ['TKE (heaviest band) ×20 each leg', 'Single-leg Box Squat to 40–50cm box ×10 each · 3-count descent', 'Step-Down increased height (35–40cm) ×12 each', 'Nordic Hamstring Curl (less assistance) ×8', 'Spanish Squat (band) 60s', 'Reverse Lunge with DBs ×10 each', 'Single-leg Calf Raise (weighted) ×12 each'] },
@@ -797,21 +819,23 @@ const SESSIONS = {
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-20': {
+  33: {
     week: 5, type: 'run', icon: '🏃', title: 'Race Pace Run — 8 × 1km',
     subtitle: '5s faster than race pace. Build a buffer.',
-    paceRef: 'intervals', kneePhase: 'activation',
+    paceRef: 'intervals', kneePhase: 'activation', deload: true,
     blocks: [
       { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
       { title: 'Main', items: ['8 × 1km @ [INTERVALS] · 60s rest only (simulates race-day run intervals)', 'This is the closest rep of your 8 race runs', '1km easy cool-down jog'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
   },
-  '2026-06-21': { rest: true, restMsg: 'Rest day. Your biggest training block is complete.' },
-  '2026-06-22': {
+  34: { rest: true, restMsg: 'Rest day. Your biggest training block is complete.' },
+  35: {
     week: 5, type: 'sim', icon: '🔥', title: 'Mini Simulation — 6 Rounds',
     subtitle: 'Race intensity, reduced volume.',
-    paceRef: 'intervals', kneePhase: 'activation',
+    paceRef: 'intervals', kneePhase: 'activation', deload: true,
+    stations: ['skierg','sled_push','burpee','row','farmers','wallball'],
+    distances: { run_m: 1000, stations: { skierg: 500, sled_push: 50, burpee: 40, row: 500, farmers: 100, wallball: 50 } },
     blocks: [
       { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
       { title: 'Main — 6 rounds, 2 min rest', items: ['R1: 1km @ [INTERVALS] → SkiErg 500m', 'R2: 1km @ [INTERVALS] → Sled Push 50m (race weight)', 'R3: 1km @ [INTERVALS] → Burpee Broad Jumps 40m', 'R4: 1km @ [INTERVALS] → Row 500m', 'R5: 1km @ [INTERVALS] → Farmers Carry 100m (2×24kg)', 'R6: 1km @ [INTERVALS] → Wall Balls 50 reps'] },
@@ -819,20 +843,21 @@ const SESSIONS = {
     ],
   },
 
-  // ── WEEK 6 TAPER (Tue 23 Jun → Race Day 5 Jul) ──
-  '2026-06-23': {
-    week: 6, type: 'recovery', icon: '🧘', title: 'Recovery — Taper Begins',
-    subtitle: '20 min. Taper week. Do not add training.',
+  // ── WEEK 6 — Deload / Race Prep ──
+  36: {
+    week: 6, type: 'recovery', icon: '🧘', title: 'Recovery — Deload Week Begins',
+    subtitle: '20 min. Reduce volume, maintain sharpness. This is NOT a taper.',
+    deload: true,
     blocks: [
       { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 60s each · IT band 60s each · calves 60s each · upper back 60s'] },
       { title: 'Mobility (10 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Childs pose 60s', 'Legs-up-the-wall 5 min'] },
     ],
-    note: 'Taper week begins. Trust the training. Do not add extra work.',
+    note: 'Deload week begins. Stay sharp, lock in pacing and transitions. Do not add extra work.',
   },
-  '2026-06-24': {
-    week: 6, type: 'run', icon: '🏃', title: 'Easy Run — Taper',
-    subtitle: 'Keep the legs moving. Nothing more.',
-    paceRef: 'easy', kneePhase: 'activation',
+  37: {
+    week: 6, type: 'run', icon: '🏃', title: 'Easy Run — Keep the Legs Moving',
+    subtitle: 'Short, controlled. Nothing more.',
+    paceRef: 'easy', kneePhase: 'activation', deload: true,
     blocks: [
       { title: 'Warm-up', items: ['Knee activation'] },
       { title: 'Main', items: ['3km easy @ [EASY]', '4 × 100m strides at the end'] },
@@ -840,21 +865,22 @@ const SESSIONS = {
     ],
     note: 'That\'s it. Do not be tempted to do more.',
   },
-  '2026-06-25': {
-    week: 6, type: 'strength', icon: '💪', title: 'Light Touch Gym — Taper',
-    subtitle: 'Knee Block Phase 3 (2 rounds only). Stay sharp, no fatigue.',
-    kneePhase: 3,
+  38: {
+    week: 6, type: 'strength', icon: '💪', title: 'Light Touch Gym — Transitions & Sharpness',
+    subtitle: 'Knee Block Phase 3 (2 rounds only). Drill transitions. Stay sharp.',
+    kneePhase: 3, deload: true,
     blocks: [
       { title: 'Knee Block — Phase 3 (10 min, 2 rounds only)', knee: true, items: ['Same Phase 3 protocol · 2 rounds, not 3', 'Goal: keep the knee firing, not accumulate fatigue'] },
       { title: 'Stations (light touch)', items: ['SkiErg 500m', 'Wall Balls 30 reps (6kg)', 'Farmers Carry 100m (2×24kg)', 'No sled, no squats'] },
+      { title: 'Transition Drills (10 min)', items: ['3 × jog 200m → straight into 10 Wall Balls → jog back (no rest at transition)', 'Simulate the first 20 seconds of each run — attack the start', 'Clean entries and exits save 3–5 sec per station in race'] },
       { title: 'Cool-down', items: ['Knee recovery protocol'] },
     ],
-    note: 'Every set should feel easy. If it\'s hard, stop.',
+    note: 'Every set should feel easy. If it\'s hard, stop. Transitions are the hidden time-saver.',
   },
-  '2026-06-26': {
+  39: {
     week: 6, type: 'run', icon: '🏃', title: 'Sharpening Run',
-    subtitle: '5 × 1km @ 5:20 — race pace feel, short.',
-    paceRef: 'intervals', kneePhase: 'activation',
+    subtitle: '5 × 1km — race pace feel, short.',
+    paceRef: 'intervals', kneePhase: 'activation', deload: true,
     blocks: [
       { title: 'Warm-up', items: ['Knee activation · 10 min easy jog'] },
       { title: 'Main', items: ['5 × 1km @ 5:20/km · 2 min rest between', 'Just a reminder to the legs — no heroics'] },
@@ -862,33 +888,51 @@ const SESSIONS = {
     ],
     note: 'Last hard running before race day. Feel sharp, not wrecked.',
   },
-  '2026-06-27': { rest: true, restMsg: 'Rest day.' },
-  '2026-06-28': { rest: true, restMsg: 'Rest day.' },
-  '2026-06-29': { rest: true, restMsg: 'Rest or gentle 20 min walk. Zero intensity. Sleep 8+ hours tonight.' },
-  '2026-06-30': {
+  40: { rest: true, restMsg: 'Rest day.' },
+  41: { rest: true, restMsg: 'Rest day.' },
+  42: { rest: true, restMsg: 'Rest or gentle 20 min walk. Zero intensity. Sleep 8+ hours tonight.' },
+  43: {
     week: 6, type: 'run', icon: '🏃', title: 'Shakeout Run',
-    paceRef: 'easy', kneePhase: 'activation',
+    paceRef: 'easy', kneePhase: 'activation', deload: true,
     blocks: [
       { title: 'Warm-up', items: ['Knee activation'] },
       { title: 'Main', items: ['2km very easy jog', '3 × 100m at race pace (5:30/km) just to remind the legs'] },
       { title: 'Cool-down', items: ['Light knee recovery stretches'] },
     ],
   },
-  '2026-07-01': { rest: true, restMsg: 'Rest day. Eat well. Pack your kit.' },
-  '2026-07-02': { rest: true, restMsg: 'Light walk or stretch only. Get 8+ hours sleep tonight.' },
-  '2026-07-03': { rest: true, restMsg: 'Rest. Hydrate. Sleep.' },
-  '2026-07-04': { rest: true, restMsg: 'Rest day. Lay out your kit. Eat a normal dinner. Lights out early.' },
-  '2026-07-05': {
-    week: 6, type: 'sim', icon: '🏆', title: 'RACE DAY — Hyrox Open Male',
+  44: { rest: true, restMsg: 'Rest day. Eat well. Pack your kit.' },
+  45: { rest: true, restMsg: 'Light walk or stretch only. Get 8+ hours sleep tonight.' },
+  46: { rest: true, restMsg: 'Rest. Hydrate. Sleep.' },
+  47: { rest: true, restMsg: 'Rest day. Lay out your kit. Eat a normal dinner. Lights out early.' },
+  48: {
+    week: 6, type: 'sim', icon: '🏆', title: 'RACE DAY',
     subtitle: 'All of this was for today. Trust your training.',
     blocks: [
       { title: 'Morning protocol', items: ['Wake 2.5–3 hrs before race start', 'Breakfast: oats + banana or toast + eggs (something you\'ve practised)', 'Arrive at venue 60 min before start'] },
       { title: 'Race warm-up (15 min before)', items: ['10 min easy jog · dynamic drills', '2 × 100m Burpee Broad Jump practice (light)', '2 × SkiErg 150m at easy effort'] },
       { title: 'Race strategy', items: ['Runs 1–3: hold BACK — adrenaline will push you faster than 5:30', 'SkiErg: 4:00–4:30 total · long arms, full hinge', 'Sled Push (152kg): low hips, small fast steps', 'Sled Pull (103kg): smooth hand-over-hand rhythm', 'Burpee Broad Jumps: breathe on the way up, jump for distance', 'Row: 1:58–2:05/500m split — hold this no matter what', 'Farmers Carry (2×24kg): walk fast, change hands at 100m', 'Sandbag Lunges (20kg): deep lunge, drive through front heel', 'Wall Balls (100 reps): find a rhythm and stick to it — squat below parallel every rep', 'Runs 5–8: this is where the race is won'] },
     ],
-    note: 'You\'ve been doing this since May 19. The knee work, the runs, the simulations. Enjoy it.',
+    note: 'You\'ve done the work. The knee work, the runs, the simulations, the benchmarks. Enjoy it.',
   },
 };
+
+// Dynamic session map — built from SESSION_TEMPLATE_DATA + user plan_start
+let SESSIONS = {};
+function buildSessionMap(planStartStr) {
+  const startStr = planStartStr || DEFAULT_PLAN_START_STR;
+  const start = new Date(startStr + 'T00:00:00');
+  PLAN_START = start;
+  const map = {};
+  Object.entries(SESSION_TEMPLATE_DATA).forEach(([dayStr, tpl]) => {
+    const d = new Date(start.getTime() + parseInt(dayStr) * 86400000);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    map[key] = tpl;
+  });
+  SESSIONS = map;
+  return map;
+}
+// Initialise immediately with defaults so the app works before user profile loads
+buildSessionMap(DEFAULT_PLAN_START_STR);
 
 
 
@@ -1058,6 +1102,11 @@ async function loadUserData() {
   const { data, error: profileErr } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
   if (profileErr) console.error('loadUserData profile error:', profileErr.message);
   userProfile = data;
+  // Rebuild session map and race date from user's actual plan dates
+  if (userProfile) {
+    buildSessionMap(userProfile.plan_start || DEFAULT_PLAN_START_STR);
+    RACE_DATE = new Date((userProfile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+  }
 
   const remote = await loadStateFromSupabase();
   if (remote) {
@@ -1215,21 +1264,42 @@ function toggleInjuryTag(el) {
   el.classList.toggle('selected');
 }
 
+let wizardTrainingLevel = 'intermediate';
+let wizardFreq = 3;
+let wizardDays = new Set();
+
 function showWizard() {
   if (userProfile) {
     document.getElementById('wzName').value = userProfile.name || '';
     document.getElementById('wzAge').value  = userProfile.age  || '';
     document.getElementById('wzGoal').value = userProfile.goal_time_min || '';
-    document.getElementById('wzRaceDate').value  = userProfile.race_date  || '2026-07-05';
-    document.getElementById('wzPlanStart').value = userProfile.plan_start || '2026-05-18';
+    document.getElementById('wzRaceDate').value  = userProfile.race_date  || DEFAULT_RACE_DATE_STR;
+    document.getElementById('wzPlanStart').value = userProfile.plan_start || DEFAULT_PLAN_START_STR;
     document.getElementById('wzIcuId').value  = userProfile.intervals_icu_id  || '';
     document.getElementById('wzIcuKey').value = userProfile.intervals_icu_key || '';
+    // Race category
+    const catEl = document.getElementById('wzCategory');
+    if (catEl) catEl.value = userProfile.race_category || '';
+    // Training level
+    wizardTrainingLevel = userProfile.training_level || 'intermediate';
+    selectWizLevel(wizardTrainingLevel);
+    // Frequency + days
+    wizardFreq = userProfile.sessions_per_week || 3;
+    const savedDays = (userProfile.training_days || '').split(',').filter(Boolean);
+    wizardDays = new Set(savedDays);
+    document.querySelectorAll('.wz-freq-btn').forEach((b, i) => b.classList.toggle('selected', i + 1 === wizardFreq));
+    if (wizardFreq) {
+      document.getElementById('wzDayPickerWrap').style.display = 'block';
+      document.getElementById('wzDayPickerLabel').textContent = `Which days? (pick ${wizardFreq})`;
+      document.querySelectorAll('.wz-day-btn').forEach(b => b.classList.toggle('selected', wizardDays.has(b.dataset.day)));
+    }
+    // Sync method
     wizardSyncMethod = userProfile.sync_method || 'intervals_icu';
-    document.querySelectorAll('.sync-opt').forEach(el => {
+    document.querySelectorAll('.sync-opt[data-method]').forEach(el => {
       el.classList.toggle('selected', el.dataset.method === wizardSyncMethod);
     });
     document.getElementById('intervalsFields').style.display = wizardSyncMethod === 'intervals_icu' ? 'block' : 'none';
-    // Pre-fill injury tags
+    // Injuries
     const existingInjury = (userProfile.injuries || '').toLowerCase();
     document.querySelectorAll('.injury-tag').forEach(t => t.classList.remove('selected'));
     if (existingInjury) {
@@ -1252,11 +1322,84 @@ function setWizardStep(n) {
   document.querySelectorAll('.wizard-dot').forEach((el, i) => el.classList.toggle('done', i <= n));
 }
 
+function selectWizLevel(level) {
+  wizardTrainingLevel = level;
+  ['beginner','intermediate','advanced'].forEach(l => {
+    document.getElementById('lvl_' + l)?.classList.toggle('selected', l === level);
+  });
+}
+
+function selectWizFreq(n, btn) {
+  wizardFreq = n;
+  document.querySelectorAll('.wz-freq-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  wizardDays.clear();
+  document.querySelectorAll('.wz-day-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('wzDayPickerWrap').style.display = 'block';
+  document.getElementById('wzDayPickerLabel').textContent = `Which days? (pick ${n})`;
+  document.getElementById('wzDayHint').textContent = `Select ${n} day${n > 1 ? 's' : ''}`;
+}
+
+function toggleWizDay(btn) {
+  const day = btn.dataset.day;
+  const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  if (wizardDays.has(day)) {
+    wizardDays.delete(day);
+    btn.classList.remove('selected');
+  } else {
+    if (wizardDays.size >= wizardFreq) {
+      const first = [...wizardDays].sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b))[0];
+      wizardDays.delete(first);
+      document.querySelector(`.wz-day-btn[data-day="${first}"]`)?.classList.remove('selected');
+    }
+    wizardDays.add(day);
+    btn.classList.add('selected');
+  }
+  const sorted = [...wizardDays].sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+  const rest = dayOrder.filter(d => !wizardDays.has(d));
+  const remaining = wizardFreq - wizardDays.size;
+  document.getElementById('wzDayHint').innerHTML = remaining > 0
+    ? `Select ${remaining} more day${remaining > 1 ? 's' : ''}`
+    : `<span style="color:var(--accent)">Training: ${sorted.join(', ')}</span> · Rest: ${rest.join(', ')}`;
+}
+
+function runWizFeasibility() {
+  const box = document.getElementById('wzFeasBox');
+  if (!box) return;
+  const goalMins = parseInt(document.getElementById('wzGoal')?.value) || 0;
+  if (!goalMins) { box.style.display = 'none'; return; }
+  const raceDate  = new Date((document.getElementById('wzRaceDate')?.value || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+  const startDate = new Date((document.getElementById('wzPlanStart')?.value || DEFAULT_PLAN_START_STR) + 'T00:00:00');
+  const weeksAvail = Math.max(0, Math.floor((raceDate - startDate) / (7 * 86400000)));
+  const freq = wizardFreq || 3;
+  const levelMap = { beginner: 165, intermediate: 105, advanced: 75 };
+  const base = levelMap[wizardTrainingLevel] || 105;
+  const weekFactor = Math.min(1, weeksAvail / 8);
+  const freqFactor = Math.min(1, (freq - 1) / 4);
+  const achievable = Math.round(base - (base - 60) * weekFactor * freqFactor * 0.7);
+  const range = [achievable - 5, achievable + 10];
+  box.style.display = 'block';
+  if (weeksAvail < 2) {
+    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.5;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);color:#f87171';
+    box.innerHTML = `<strong>⚠️ Very little time before race day</strong><br>Only ${weeksAvail} week${weeksAvail !== 1 ? 's' : ''} available. We'll give you the sharpest possible prep for the window available.`;
+  } else if (goalMins < range[0]) {
+    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.5;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fbbf24';
+    box.innerHTML = `<strong>⚡ Bold target — we're here for it</strong><br>That's optimistic for ${weeksAvail} weeks at ${freq}×/week. Let's build toward it and see what your first week's sessions say — we'll recalibrate if needed.`;
+  } else if (goalMins > range[1] + 20) {
+    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.5;background:rgba(110,231,183,.08);border:1px solid rgba(110,231,183,.3);color:#6ee7b7';
+    box.innerHTML = `<strong>✓ Solid and achievable — maybe even beatable</strong><br>Based on your level and timeline, this goal looks well within reach. We may suggest pushing the target up after your first week.`;
+  } else {
+    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.5;background:rgba(110,231,183,.08);border:1px solid rgba(110,231,183,.3);color:#6ee7b7';
+    box.innerHTML = `<strong>✓ Goal looks well-matched</strong><br>With ${weeksAvail} weeks at ${freq}×/week your target of <strong>${Math.floor(goalMins/60)}h ${goalMins%60}m</strong> aligns with your level. We'll check in after week 1 — if you're tracking ahead, we'll push the target up.`;
+  }
+}
+
 function wizardNext(step) {
   if (step === 0) {
     const name = document.getElementById('wzName')?.value?.trim();
     if (!name) { alert('Please enter your name.'); return; }
   }
+  if (step === 3) runWizFeasibility(); // run feasibility when reaching goal step
   setWizardStep(step + 1);
 }
 
@@ -1277,6 +1420,7 @@ async function wizardFinish() {
     return;
   }
 
+  const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const profile = {
     id:               currentUser.id,
     name:             document.getElementById('wzName')?.value?.trim() || '',
@@ -1284,6 +1428,10 @@ async function wizardFinish() {
     goal_time_min:    parseInt(document.getElementById('wzGoal')?.value) || 90,
     race_date:        document.getElementById('wzRaceDate')?.value || '2026-07-05',
     plan_start:       document.getElementById('wzPlanStart')?.value || '2026-05-18',
+    race_category:    document.getElementById('wzCategory')?.value || null,
+    training_level:   wizardTrainingLevel || 'intermediate',
+    sessions_per_week:wizardFreq || null,
+    training_days:    [...wizardDays].sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b)).join(',') || null,
     sync_method:      wizardSyncMethod,
     intervals_icu_id: document.getElementById('wzIcuId')?.value?.trim() || null,
     intervals_icu_key:document.getElementById('wzIcuKey')?.value?.trim() || null,
@@ -1302,7 +1450,10 @@ async function wizardFinish() {
   }
 
   userProfile = profile;
+  buildSessionMap(profile.plan_start);
+  RACE_DATE = new Date((profile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
   document.getElementById('wizardOverlay').classList.add('hidden');
+  document.getElementById('profilePromptBanner')?.remove();
 
   if (wizardSyncMethod === 'intervals_icu' && profile.intervals_icu_id && profile.intervals_icu_key) {
     syncIntervalsIcu();
@@ -1380,7 +1531,7 @@ function today() { return dateKey(new Date()); }
 function getWeekNum(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const diff = Math.floor((d - PLAN_START) / 86400000);
-  return Math.max(1, Math.min(6, Math.floor(diff / 7) + 1));
+  return Math.max(1, Math.floor(diff / 7) + 1);
 }
 function daysToRace() {
   const diff = Math.ceil((RACE_DATE - new Date()) / 86400000);
@@ -1390,10 +1541,17 @@ function formatDate(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' });
 }
+function levelPaceOffsetSec() {
+  const lvl = userProfile?.training_level;
+  if (lvl === 'beginner')  return 20;  // +20s/km — easier starting targets
+  if (lvl === 'advanced')  return -10; // -10s/km — faster starting targets
+  return 0; // intermediate / not set
+}
+
 function adjustedPace(week, key, addSecs) {
   const base = PACE_TARGETS[week]?.[key];
   if (!base) return '–';
-  const adj = (state.paceAdj[week] || 0) + (addSecs || 0);
+  const adj = (state.paceAdj[week] || 0) + (addSecs || 0) + levelPaceOffsetSec();
   const [m, s] = base.split(':').map(Number);
   const total = Math.max(180, m * 60 + s + adj);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
@@ -1414,7 +1572,7 @@ function secToMin(s) {
 
 function computeRaceProjection() {
   // 1. Projected run pace — use actual sim paces > interval Garmin data > adjusted target
-  const simDates = Object.keys(SIM_STATIONS);
+  const simDates = Object.keys(SESSIONS).filter(k => SESSIONS[k]?.stations?.length);
   const simPaces = simDates
     .map(d => state.feedback[d]?.actual_run_pace_sec)
     .filter(p => p && p > 0);
@@ -1522,15 +1680,15 @@ function renderSimAnalysis() {
   const el = document.getElementById('simAnalysisArea');
   if (!el) return;
   // Find the most recently completed sim with feedback
-  const simDates = Object.keys(SIM_STATIONS)
-    .filter(d => state.completions[d] === 'done' && state.feedback[d]?.station_rpe);
+  const simDates = Object.keys(SESSIONS)
+    .filter(d => SESSIONS[d]?.stations?.length && state.completions[d] === 'done' && state.feedback[d]?.station_rpe);
   if (!simDates.length) { el.innerHTML = ''; return; }
   const lastSim = simDates.sort().pop();
   const fb = state.feedback[lastSim];
   const rpe = fb.station_rpe || {};
 
   // Sort stations by RPE descending
-  const stations = SIM_STATIONS[lastSim] || [];
+  const stations = SESSIONS[lastSim]?.stations || [];
   const sorted = stations.slice().sort((a,b) => (rpe[b]||0) - (rpe[a]||0));
   const weakest = sorted.filter(k => (rpe[k]||0) >= 4);
   const strongest = sorted.filter(k => (rpe[k]||0) <= 2);
@@ -1630,9 +1788,25 @@ function render() {
   renderWeekStrip();
   renderPaceBar();
   renderAdjNotice();
+  renderProfilePrompt();
   renderSession();
   renderAnalysisCard();
   renderSimAnalysis();
+}
+
+function renderProfilePrompt() {
+  const el = document.getElementById('profilePromptBanner');
+  if (!el) return;
+  if (!userProfile || userProfile.training_level) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div style="margin:8px 16px;padding:12px 14px;background:#1a1e2a;border:1px solid #5b8fff;border-radius:10px;display:flex;align-items:center;gap:10px">
+      <div style="font-size:20px">👋</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:#a0b4ff;margin-bottom:2px">Update your training profile</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.4">Set your training level, schedule, and race details so the plan can personalise intensity and pacing for you.</div>
+      </div>
+      <button onclick="showWizard()" style="background:#2a3560;border:1px solid #5b8fff;color:#a0b4ff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Update →</button>
+    </div>`;
 }
 
 
@@ -1834,7 +2008,7 @@ function renderSession() {
         <div class="session-type-badge type-${session.type}">${session.icon}</div>
         <div class="session-title">
           <h2>${session.title}</h2>
-          <div class="session-subtitle">${session.subtitle || ''}</div>
+          <div class="session-subtitle">${session.subtitle || ''}${session.deload ? ' <span style="font-size:10px;font-weight:700;background:#1a2030;color:#818cf8;padding:2px 6px;border-radius:10px;margin-left:6px;vertical-align:middle">DELOAD</span>' : ''}</div>
         </div>
         <div class="status-badge status-${statusCls}">${statusLabel}</div>
       </div>
@@ -1935,8 +2109,8 @@ function openFeedback() {
     </div>`;
 
   const isSim = session.type === 'sim';
-  const simStations = isSim ? (SIM_STATIONS[viewDate] || []) : [];
-  const simDist = SIM_DISTANCES[viewDate] || {};
+  const simStations = isSim ? (SESSIONS[viewDate]?.stations || []) : [];
+  const simDist = SESSIONS[viewDate]?.distances || {};
   const existingSplits = existing.splits || [];
 
   // Per-round splits table (replaces single avg-pace input)
@@ -1995,7 +2169,7 @@ function openFeedback() {
     ${kneeHtml}
     ${(() => {
       const weightStations = Object.keys(STATION_WEIGHT_DEFAULTS).filter(k =>
-        isSim ? (SIM_STATIONS[viewDate] || []).includes(k) :
+        isSim ? (SESSIONS[viewDate]?.stations || []).includes(k) :
         session.blocks?.some(b => b.items?.some(i => i.toLowerCase().includes(k.replace('_',' ')) || i.toLowerCase().includes((STATION_LABELS[k]||'').toLowerCase())))
       );
       const existingW = existing.station_weights || {};
@@ -2074,7 +2248,7 @@ function saveFeedback() {
   const week = session?.week || getWeekNum(viewDate);
 
   const isSim = session?.type === 'sim';
-  const simStations = isSim ? (SIM_STATIONS[viewDate] || []) : [];
+  const simStations = isSim ? (SESSIONS[viewDate]?.stations || []) : [];
   const stationRpe = {};
   if (isSim) {
     simStations.forEach(k => {
@@ -2867,7 +3041,7 @@ function generateICS() {
     endD.setMinutes(endD.getMinutes() + durMin);
     const endStampUTC = endD.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
 
-    const typeLabel = { run: '🏃 Run', strength: '💪 Strength', sim: '🔥 Simulation', recovery: '🧘 Recovery' }[session.type] || session.type;
+    const typeLabel = { run: '🏃 Run', strength: '💪 Strength', sim: '🔥 Simulation', recovery: '🧘 Recovery', station: '🎯 Station Mastery', emom: '⏱️ EMOM Benchmark' }[session.type] || session.type;
     const summary = `${typeLabel}: ${session.title}`;
 
     // Build description from blocks
@@ -2982,9 +3156,12 @@ function downloadICS() {
       <div class="wizard-dot" id="wd1"></div>
       <div class="wizard-dot" id="wd2"></div>
       <div class="wizard-dot" id="wd3"></div>
+      <div class="wizard-dot" id="wd4"></div>
+      <div class="wizard-dot" id="wd5"></div>
+      <div class="wizard-dot" id="wd6"></div>
     </div>
 
-    <!-- Step 1: Profile -->
+    <!-- Step 1: Profile basics -->
     <div class="wizard-step active" id="wizStep0">
       <h2>Let's set up your profile</h2>
       <p class="wizard-sub">This personalises your pace targets and race projection.</p>
@@ -2996,20 +3173,30 @@ function downloadICS() {
         <label class="wizard-label">Age</label>
         <input class="auth-input" id="wzAge" type="number" placeholder="e.g. 32" min="16" max="80">
       </div>
-      <div class="wizard-field">
-        <label class="wizard-label">Goal finish time (minutes)</label>
-        <input class="auth-input" id="wzGoal" type="number" placeholder="e.g. 90" min="50" max="180">
-      </div>
       <button class="wizard-next" onclick="wizardNext(0)">Next →</button>
     </div>
 
-    <!-- Step 2: Race date -->
+    <!-- Step 2: Race details -->
     <div class="wizard-step" id="wizStep1">
-      <h2>Your race details</h2>
-      <p class="wizard-sub">When is your Hyrox race?</p>
+      <h2>Your race</h2>
+      <p class="wizard-sub">We'll build your plan backwards from race day.</p>
       <div class="wizard-field">
         <label class="wizard-label">Race date</label>
         <input class="auth-input" id="wzRaceDate" type="date" value="2026-07-05">
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Race category</label>
+        <select class="auth-input" id="wzCategory">
+          <option value="">Select your category…</option>
+          <option value="open_men">Open Men</option>
+          <option value="open_women">Open Women</option>
+          <option value="pro_men">Pro Men</option>
+          <option value="pro_women">Pro Women</option>
+          <option value="doubles_men">Doubles Men</option>
+          <option value="doubles_women">Doubles Women</option>
+          <option value="doubles_mixed">Doubles Mixed</option>
+          <option value="relay">Relay</option>
+        </select>
       </div>
       <div class="wizard-field">
         <label class="wizard-label">Plan start date</label>
@@ -3018,8 +3205,100 @@ function downloadICS() {
       <button class="wizard-next" onclick="wizardNext(1)">Next →</button>
     </div>
 
-    <!-- Step 3: Sync method -->
+    <!-- Step 3: Training level -->
     <div class="wizard-step" id="wizStep2">
+      <h2>Your training level</h2>
+      <p class="wizard-sub">This sets your starting pace targets and how we ramp up intensity.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+        <div class="sync-opt" id="lvl_beginner" onclick="selectWizLevel('beginner')" style="cursor:pointer">
+          <div class="so-icon">🌱</div>
+          <div>
+            <div class="so-title">Beginner — Starting fresh</div>
+            <div class="so-desc">Little or no structured training. We ease you in gradually and adapt from your first week's feedback.</div>
+          </div>
+        </div>
+        <div class="sync-opt selected" id="lvl_intermediate" onclick="selectWizLevel('intermediate')" style="cursor:pointer">
+          <div class="so-icon">🔥</div>
+          <div>
+            <div class="so-title">Intermediate — Active & training</div>
+            <div class="so-desc">You train regularly or are mid-prep. We add Hyrox-specific structure and build from your current base.</div>
+          </div>
+        </div>
+        <div class="sync-opt" id="lvl_advanced" onclick="selectWizLevel('advanced')" style="cursor:pointer">
+          <div class="so-icon">⚡</div>
+          <div>
+            <div class="so-title">Advanced — Hyrox trained</div>
+            <div class="so-desc">You've been training Hyrox consistently. Higher starting intensity, less ramp-up, faster targets from day 1.</div>
+          </div>
+        </div>
+      </div>
+      <button class="wizard-next" onclick="wizardNext(2)">Next →</button>
+    </div>
+
+    <!-- Step 4: Training schedule -->
+    <div class="wizard-step" id="wizStep3">
+      <h2>Your training schedule</h2>
+      <p class="wizard-sub">How many days per week can you train? We'll protect your rest days.</p>
+      <div class="wizard-field">
+        <label class="wizard-label">Days per week</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px" id="wzFreqBtns">
+          <button class="wz-freq-btn" onclick="selectWizFreq(1,this)">1</button>
+          <button class="wz-freq-btn" onclick="selectWizFreq(2,this)">2</button>
+          <button class="wz-freq-btn selected" onclick="selectWizFreq(3,this)">3</button>
+          <button class="wz-freq-btn" onclick="selectWizFreq(4,this)">4</button>
+          <button class="wz-freq-btn" onclick="selectWizFreq(5,this)">5</button>
+          <button class="wz-freq-btn" onclick="selectWizFreq(6,this)">6</button>
+        </div>
+      </div>
+      <div class="wizard-field" id="wzDayPickerWrap" style="display:none">
+        <label class="wizard-label" id="wzDayPickerLabel">Which days?</label>
+        <div style="display:flex;gap:6px;margin-bottom:8px" id="wzDayBtns">
+          <button class="wz-day-btn" data-day="Mon" onclick="toggleWizDay(this)">Mon</button>
+          <button class="wz-day-btn" data-day="Tue" onclick="toggleWizDay(this)">Tue</button>
+          <button class="wz-day-btn" data-day="Wed" onclick="toggleWizDay(this)">Wed</button>
+          <button class="wz-day-btn" data-day="Thu" onclick="toggleWizDay(this)">Thu</button>
+          <button class="wz-day-btn" data-day="Fri" onclick="toggleWizDay(this)">Fri</button>
+          <button class="wz-day-btn" data-day="Sat" onclick="toggleWizDay(this)">Sat</button>
+          <button class="wz-day-btn" data-day="Sun" onclick="toggleWizDay(this)">Sun</button>
+        </div>
+        <div id="wzDayHint" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+      </div>
+      <button class="wizard-next" onclick="wizardNext(3)">Next →</button>
+    </div>
+
+    <!-- Step 5: Goal time + feasibility -->
+    <div class="wizard-step" id="wizStep4">
+      <h2>Your goal time</h2>
+      <p class="wizard-sub">We'll tailor pace targets around this. We'll tell you if the timeline looks right.</p>
+      <div class="wizard-field">
+        <label class="wizard-label">Goal finish time (minutes total — e.g. 90 for 1h 30m)</label>
+        <input class="auth-input" id="wzGoal" type="number" placeholder="e.g. 90" min="45" max="240" oninput="runWizFeasibility()">
+      </div>
+      <div id="wzFeasBox" style="display:none;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.5"></div>
+      <button class="wizard-next" onclick="wizardNext(4)">Next →</button>
+    </div>
+
+    <!-- Step 6: Injuries -->
+    <div class="wizard-step" id="wizStep5">
+      <h2>Any injuries or niggles?</h2>
+      <p class="wizard-sub">Your warm-up, cool-down, and recovery sessions will be tailored. Select all that apply.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        <button class="injury-tag" data-injury="knee" onclick="toggleInjuryTag(this)">🦵 Knee / Meniscus</button>
+        <button class="injury-tag" data-injury="shoulder" onclick="toggleInjuryTag(this)">💪 Shoulder</button>
+        <button class="injury-tag" data-injury="back" onclick="toggleInjuryTag(this)">🔙 Back</button>
+        <button class="injury-tag" data-injury="hip" onclick="toggleInjuryTag(this)">🏃 Hip / Groin</button>
+        <button class="injury-tag" data-injury="ankle" onclick="toggleInjuryTag(this)">🦶 Ankle / Achilles</button>
+        <button class="injury-tag" data-injury="none" onclick="toggleInjuryTag(this)">✅ No injuries</button>
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Details <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+        <textarea id="wzInjuryText" class="auth-input" rows="3" placeholder="e.g. left knee tendon, aggravated by downhill running…" style="resize:vertical;min-height:72px"></textarea>
+      </div>
+      <button class="wizard-next" onclick="wizardNext(5)">Next →</button>
+    </div>
+
+    <!-- Step 7: Sync method -->
+    <div class="wizard-step" id="wizStep6">
       <h2>How will you log workouts?</h2>
       <p class="wizard-sub">You can change this any time in your profile.</p>
       <div class="sync-options" id="syncOptions">
@@ -3052,8 +3331,6 @@ function downloadICS() {
           </div>
         </div>
       </div>
-
-      <!-- Intervals.icu fields (shown only when intervals_icu selected) -->
       <div id="intervalsFields" style="margin-top:14px">
         <div class="wizard-field">
           <label class="wizard-label">Intervals.icu Athlete ID <span style="font-weight:400;color:var(--muted)">(Settings → General → Athlete ID)</span></label>
@@ -3064,27 +3341,7 @@ function downloadICS() {
           <input class="auth-input" id="wzIcuKey" type="password" placeholder="API key">
         </div>
       </div>
-
-      <button class="wizard-next" onclick="wizardNext(2)">Next →</button>
-    </div>
-
-    <!-- Step 4: Injuries -->
-    <div class="wizard-step" id="wizStep3">
-      <h2>Any injuries to note?</h2>
-      <p class="wizard-sub">Your warm-up, cool-down, and recovery sessions will be tailored to your needs. Select all that apply.</p>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
-        <button class="injury-tag" data-injury="knee" onclick="toggleInjuryTag(this)">🦵 Knee / Meniscus</button>
-        <button class="injury-tag" data-injury="shoulder" onclick="toggleInjuryTag(this)">💪 Shoulder</button>
-        <button class="injury-tag" data-injury="back" onclick="toggleInjuryTag(this)">🔙 Back</button>
-        <button class="injury-tag" data-injury="hip" onclick="toggleInjuryTag(this)">🏃 Hip / Groin</button>
-        <button class="injury-tag" data-injury="ankle" onclick="toggleInjuryTag(this)">🦶 Ankle / Achilles</button>
-        <button class="injury-tag" data-injury="none" onclick="toggleInjuryTag(this)">✅ No injuries</button>
-      </div>
-      <div class="wizard-field">
-        <label class="wizard-label">Details <span style="font-weight:400;color:var(--muted)">(optional — e.g. "left meniscus tear, 6 months post-op")</span></label>
-        <textarea id="wzInjuryText" class="auth-input" rows="3" placeholder="Describe your injury or leave blank…" style="resize:vertical;min-height:72px"></textarea>
-      </div>
-      <button class="wizard-next" id="startTrainingBtn" onclick="wizardFinish()">Start training →</button>
+      <button class="wizard-next" id="startTrainingBtn" onclick="wizardFinish()">Build my plan →</button>
     </div>
   </div>
 </div>
