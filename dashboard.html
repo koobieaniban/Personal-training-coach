@@ -667,24 +667,13 @@ const SESSION_TEMPLATE_DATA = {
       { title: 'Cool-down', items: ['Easy 1km jog · Knee recovery protocol'] },
     ],
   },
-  17: {
-    week: 3, type: 'station', icon: '🎯', title: 'Station Mastery — Skill Session',
-    subtitle: 'Isolated technique work — no running fatigue. Learn the movements before adding speed.',
-    blocks: [
-      { title: 'Warm-up (8 min)', items: ['500m SkiErg easy · hip circles · shoulder rolls'] },
-      { title: 'SkiErg — Rhythm & Technique (20 min)', items: ['4 × 500m @ conversational pace · 90s rest', 'Focus: full hip hinge, arms extend fully overhead before pulling, exhale on pull', 'Think "tall → hinge → pull" — not just arm rowing'] },
-      { title: 'Wall Balls — Metronome Drill (15 min)', items: ['Set phone metronome to 42 BPM', '5 × 20 reps in time with the beat — descent on one beat, throw on the next', 'Builds rhythm that survives fatigue in race conditions', 'Every rep: squat below parallel, throw above the line'] },
-      { title: 'Sled Tactics (15 min)', items: ['3 × 50m push @ race weight · low hips, short fast steps, drive through the ground', '3 × 50m pull @ race weight · smooth hand-over-hand, keep tension on the rope', 'Between sets: note which cues make the biggest difference'] },
-      { title: 'Farmers Carry — Transition Practice (10 min)', items: ['4 × 50m @ 2×24kg', 'Practice grip switch at 25m without stopping', 'Goal: no pace break at the changeover — saves 3–5 sec per carry in race'] },
-    ],
-    note: 'JK principle: train stations in isolation before adding running fatigue. Today is the isolated phase — next week you integrate the run.',
-  },
+  17: { rest: true, restMsg: 'Recovery day — legs need 48 h between the run and tomorrow\'s strength session.' },
   18: {
-    week: 3, type: 'strength', icon: '💪', title: 'Strength + Hyrox Circuit',
-    subtitle: 'Knee Block Phase 2 · Loaded sleds · Full circuit',
+    week: 3, type: 'strength', icon: '💪', title: 'Strength + Station Mastery',
+    subtitle: 'Knee Block Phase 2 · Loaded sleds · Station technique drills',
     kneePhase: 2,
     blocks: [
-      { title: 'Warm-up', items: ['500m SkiErg'] },
+      { title: 'Warm-up — Station Technique (20 min)', items: ['SkiErg rhythm: 4 × 500m @ conversational pace · 90s rest — full hip hinge, arms fully overhead before pull', 'Wall Ball metronome: phone to 42 BPM · 3 × 15 reps in time · squat below parallel every rep', 'Sled walkthrough: 2 × 50m push + 2 × 50m pull @ race weight — low hips, short fast steps'] },
       { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['TKE (heavier band) ×20 each leg', 'Step-Down (eccentric) ×12 each leg · 20–30cm box, 3–4 count lower', 'Single-leg Glute Bridge ×12 each · keep hips level', 'Nordic Hamstring Curl (assisted) ×8 · 3–4 count lower, assist up', 'Lateral Band Walk ×20 steps each direction', 'Wall Sit 45s', 'Single-leg Calf Raise ×15 each · 3 count eccentric'] },
       { title: 'Block A — Strength (3 rounds, 90s rest)', items: ['Back Squat 3×6 @ 60–70% 1RM', 'Romanian Deadlift 3×8 @ 60–70kg', 'Single-leg Step-up + 10kg DBs 3×8 each', 'Barbell Hip Thrust 3×10 @ 70kg', 'Barbell Bent-over Row 3×10 @ 50–60kg'] },
       { title: 'Block B — Hyrox Circuit (2 rounds, 5 min rest)', items: ['SkiErg 500m', 'Sled Push 50m @ 80–100kg (build toward race weight 152kg)', 'Sled Pull 50m @ 60–75kg (build toward race weight 103kg)', 'Burpee Broad Jumps 40m (~20 jumps)'] },
@@ -1972,7 +1961,7 @@ function renderSession() {
   const proto    = injType ? INJURY_PROTOCOLS[injType] : null;
   const hasKnee  = injType === 'knee';
 
-  const blocksHtml = session.blocks.filter(b => !b.knee || hasKnee).map(b => {
+  const blocksHtml = (session.blocks || []).filter(b => !b.knee || hasKnee).map(b => {
     const titleLow = b.title.toLowerCase();
     const isWarmup   = titleLow.includes('warm') || titleLow.includes('activation');
     const isCooldown = titleLow.includes('cool') || titleLow.includes('recovery');
@@ -1981,7 +1970,7 @@ function renderSession() {
     const extraItems = injItems || stdItems || [];
     // Advisory note for injury-relevant stations in this block
     const blockText  = b.items.join(' ').toLowerCase();
-    const stationNote = proto && proto.stations.some(s => blockText.includes(s.replace('_',' ')) || blockText.includes(STATION_LABELS[s]?.toLowerCase() || ''))
+    const stationNote = proto && proto.stations?.some(s => blockText.includes(s.replace('_',' ')) || blockText.includes(STATION_LABELS[s]?.toLowerCase() || ''))
       ? `<div class="knee-note" style="margin-bottom:6px">🩹 ${proto.note}</div>` : '';
     return `<div class="block">
       <div class="block-title ${b.knee ? 'knee-title' : ''}">${b.title}</div>
