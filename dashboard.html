@@ -1152,10 +1152,15 @@ async function loadUserData() {
         ? localEntry : remoteEntry;
     });
 
+    // Prefer the richer paceAdj (more keys = more weeks computed).
+    // Avoids {} (truthy but empty) overwriting a correctly-populated remote value.
+    const localPaceKeys  = Object.keys(local.paceAdj  || {}).length;
+    const remotePaceKeys = Object.keys(remote.paceAdj || {}).length;
+
     state = {
       ...remote,
       completions: useLocalComp ? local.completions : remote.completions,
-      paceAdj:     local.paceAdj || remote.paceAdj,
+      paceAdj:     localPaceKeys >= remotePaceKeys ? (local.paceAdj || {}) : (remote.paceAdj || {}),
       feedback:    useLocalFb   ? local.feedback   : remote.feedback,
       workoutData: mergedWd,
     };
@@ -1179,8 +1184,13 @@ async function loadUserData() {
     if (!state.feedback)    state.feedback    = {};
     if (!state.paceAdj)     state.paceAdj     = {};
     if (!state.workoutData) state.workoutData  = {};
+
+    // Recompute paceAdj from merged feedback — ensures any device sees correct values
+    // regardless of what was (or wasn't) stored in paceAdj previously.
+    recomputeAllPaceAdj();
+
     saveLocalState(state);
-    console.log('Loaded from Supabase — completions:', Object.keys(state.completions).length, 'feedback:', Object.keys(state.feedback).length, 'workoutData:', Object.keys(state.workoutData).length);
+    console.log('Loaded from Supabase — completions:', Object.keys(state.completions).length, 'feedback:', Object.keys(state.feedback).length, 'paceAdj:', JSON.stringify(state.paceAdj), 'workoutData:', Object.keys(state.workoutData).length);
   } else {
     console.warn('loadStateFromSupabase returned null — using local state');
   }
@@ -1586,12 +1596,22 @@ function levelPaceOffsetSec() {
   return 0; // intermediate / not set
 }
 
+function effectivePaceAdj(week) {
+  // Walk back to find the most recently computed adjustment.
+  // Stops at any explicitly-set value (including 0 = "pace feels right").
+  // undefined means no feedback yet for that week, so we inherit from the prior week.
+  for (let w = week; w >= 1; w--) {
+    if (state.paceAdj[w] !== undefined && state.paceAdj[w] !== null) return state.paceAdj[w];
+  }
+  return 0;
+}
+
 function adjustedPace(week, key, addSecs) {
   // Clamp to max defined week so plans longer than 6 weeks still get valid targets
   const clampedWeek = Math.min(week, Math.max(...Object.keys(PACE_TARGETS).map(Number)));
   const base = PACE_TARGETS[clampedWeek]?.[key];
   if (!base) return '–';
-  const adj = (state.paceAdj[week] || 0) + (addSecs || 0) + levelPaceOffsetSec();
+  const adj = effectivePaceAdj(week) + (addSecs || 0) + levelPaceOffsetSec();
   const [m, s] = base.split(':').map(Number);
   const total = Math.max(180, m * 60 + s + adj);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
@@ -1793,7 +1813,8 @@ function recomputePaceAdj(week) {
       const s = SESSIONS[k];
       return s && s.week === week && s.type === 'run';
     })
-    .map(([, v]) => v.pace_feel || 0);
+    .map(([, v]) => v.pace_feel)
+    .filter(v => v !== null && v !== undefined);
 
   if (weekFeedback.length < 2) return;
   const avg = weekFeedback.reduce((a, b) => a + b, 0) / weekFeedback.length;
@@ -1806,6 +1827,30 @@ function recomputePaceAdj(week) {
   else if (avg > 0.5)  adj =  10;
   state.paceAdj[week] = adj;
   saveState(state);
+}
+
+function recomputeAllPaceAdj() {
+  // Derive paceAdj for every week from feedback — makes it device-agnostic.
+  // Called on login after feedback is merged, so any device always sees correct values.
+  let changed = false;
+  for (let w = 1; w <= totalPlanWeeks(); w++) {
+    const runFeedback = Object.entries(state.feedback)
+      .filter(([k]) => {
+        const s = SESSIONS[k];
+        return s && s.week === w && s.type === 'run';
+      })
+      .map(([, v]) => v.pace_feel)
+      .filter(v => v !== null && v !== undefined);
+    if (runFeedback.length < 2) continue;
+    const avg = runFeedback.reduce((a, b) => a + b, 0) / runFeedback.length;
+    let adj = 0;
+    if (avg < -1.0)      adj = -10;
+    else if (avg < -0.5) adj = -5;
+    else if (avg > 1.0)  adj =  15;
+    else if (avg > 0.5)  adj =  10;
+    if (state.paceAdj[w] !== adj) { state.paceAdj[w] = adj; changed = true; }
+  }
+  if (changed) saveState(state);
 }
 
 // ── Selected view date ────────────────────────────────────────────────────────
