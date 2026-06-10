@@ -2520,15 +2520,9 @@ function analyzeWorkout(laps, dk) {
     } else if (avgHR <= 160) {
       watch.push(`HR drifted into Zone 3: avg ${avgHR} bpm. Ease back 10–15s/km on the next easy run.`);
       if (avgPaceSec > 0) adjustments.push(`Adjust easy pace to ${secToPace(avgPaceSec + 15)}/km until HR stays below 146 bpm.`);
-      state.paceAdj[week] = Math.max(state.paceAdj[week] || 0, 15);
-      saveState(state);
-      pushTrainingState(state);
     } else {
       watch.push(`HR too high for easy session: avg ${avgHR} bpm (Zone 4). This run was tempo intensity, not aerobic base work.`);
       if (avgPaceSec > 0) adjustments.push(`Drop easy pace to ${secToPace(avgPaceSec + 25)}/km. Stop if HR exceeds 150 bpm.`);
-      state.paceAdj[week] = Math.max(state.paceAdj[week] || 0, 20);
-      saveState(state);
-      pushTrainingState(state);
     }
   }
 
@@ -2856,7 +2850,7 @@ Required format:
 }
 
 Conversion rules:
-- Pace MM:SS/km → total seconds (5:30 = 330, 6:15 = 375)
+- Pace MM:SS/km → total seconds (5:30 = 330, 6:15 = 375). Valid running pace is 180–900 sec/km (3:00–15:00/km). If a value labelled as pace exceeds 900 sec/km it is almost certainly the total activity time — put it in total_time_seconds instead and compute avg_pace_sec_per_km = total_time_seconds / total_distance_km.
 - Time H:MM:SS or MM:SS → total seconds (28:45 = 1725, 1:02:30 = 3750)
 - If a per-km splits table is visible, populate the laps array in order
 - If no splits table is visible, return laps as []
@@ -2933,8 +2927,17 @@ async function handleScreenshotUpload(file, dk, slotIndex) {
     }
     if (!laps.length && data.avg_pace_sec_per_km) {
       const distM = (data.total_distance_km || 1) * 1000;
-      laps = [{ distM, totalTimeSec: data.total_time_seconds || data.avg_pace_sec_per_km * (data.total_distance_km || 1),
-        paceSecPerKm: data.avg_pace_sec_per_km, avgHR: data.avg_hr_bpm || 0, maxHR: data.max_hr_bpm || 0 }];
+      let pace = data.avg_pace_sec_per_km;
+      // Sanity check: valid running pace is 180–900 sec/km (3:00–15:00/km).
+      // If the model returned a value outside that range it almost certainly
+      // misread total activity time as pace — recalculate from distance.
+      if (pace > 900 && data.total_distance_km > 0) {
+        pace = Math.round(pace / data.total_distance_km);
+        if (!data.total_time_seconds) data.total_time_seconds = data.avg_pace_sec_per_km;
+        data.avg_pace_sec_per_km = pace;
+      }
+      laps = [{ distM, totalTimeSec: data.total_time_seconds || pace * (data.total_distance_km || 1),
+        paceSecPerKm: pace, avgHR: data.avg_hr_bpm || 0, maxHR: data.max_hr_bpm || 0 }];
     }
 
     if (!laps.length) {
