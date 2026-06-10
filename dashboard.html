@@ -1841,7 +1841,12 @@ function recomputeAllPaceAdj() {
       })
       .map(([, v]) => v.pace_feel)
       .filter(v => v !== null && v !== undefined);
-    if (runFeedback.length < 2) continue;
+    if (runFeedback.length < 2) {
+      // Not enough feedback — remove any stale value so effectivePaceAdj
+      // walks back to the previous week's adjustment correctly.
+      if (state.paceAdj[w] !== undefined) { delete state.paceAdj[w]; changed = true; }
+      continue;
+    }
     const avg = runFeedback.reduce((a, b) => a + b, 0) / runFeedback.length;
     let adj = 0;
     if (avg < -1.0)      adj = -10;
@@ -2918,24 +2923,30 @@ async function handleScreenshotUpload(file, dk, slotIndex) {
     const mimeType = file.type || 'image/jpeg';
     const data = await callClaudeVision(base64, mimeType, apiKey);
 
+    // ── Normalise model output before using it ─────────────────────────────
+    // Valid running pace: 180–900 sec/km (3:00–15:00/km).
+    // A common misread: the model treats total activity time (e.g. 28:36 = 1716s)
+    // as a per-km pace. Catch this for both the summary pace and any lap paces.
+    if (data.avg_pace_sec_per_km > 900 && data.total_distance_km > 0) {
+      if (!data.total_time_seconds) data.total_time_seconds = data.avg_pace_sec_per_km;
+      data.avg_pace_sec_per_km = Math.round(data.total_time_seconds / data.total_distance_km);
+    }
+    if (data.laps) {
+      // Drop any lap whose pace is outside valid range — they were likely misread.
+      // Falling back to the summary pace is more accurate than a corrupted lap table.
+      data.laps = data.laps.filter(l => l.pace_sec_per_km > 0 && l.pace_sec_per_km <= 900);
+    }
+    // ── Build laps array ───────────────────────────────────────────────────
     let laps = [];
     if (data.laps?.length) {
-      laps = data.laps.filter(l => l.pace_sec_per_km > 0).map(l => ({
+      laps = data.laps.map(l => ({
         distM: 1000, totalTimeSec: l.pace_sec_per_km,
         paceSecPerKm: l.pace_sec_per_km, avgHR: l.avg_hr || 0, maxHR: 0,
       }));
     }
     if (!laps.length && data.avg_pace_sec_per_km) {
       const distM = (data.total_distance_km || 1) * 1000;
-      let pace = data.avg_pace_sec_per_km;
-      // Sanity check: valid running pace is 180–900 sec/km (3:00–15:00/km).
-      // If the model returned a value outside that range it almost certainly
-      // misread total activity time as pace — recalculate from distance.
-      if (pace > 900 && data.total_distance_km > 0) {
-        pace = Math.round(pace / data.total_distance_km);
-        if (!data.total_time_seconds) data.total_time_seconds = data.avg_pace_sec_per_km;
-        data.avg_pace_sec_per_km = pace;
-      }
+      const pace  = data.avg_pace_sec_per_km; // already normalised above
       laps = [{ distM, totalTimeSec: data.total_time_seconds || pace * (data.total_distance_km || 1),
         paceSecPerKm: pace, avgHR: data.avg_hr_bpm || 0, maxHR: data.max_hr_bpm || 0 }];
     }
