@@ -1984,7 +1984,7 @@ function renderPaceBar() {
   const session = SESSIONS[viewDate];
   if (!session || session.rest) { document.getElementById('paceBar').innerHTML = ''; return; }
   const week = session.week || getWeekNum(viewDate);
-  const adj = state.paceAdj[week] || 0;
+  const adj = effectivePaceAdj(week);
 
   const pills = [
     { label: 'Easy', key: 'easy' },
@@ -2007,7 +2007,7 @@ function renderAdjNotice() {
   const session = SESSIONS[viewDate];
   if (!session || session.rest) { el.innerHTML = ''; return; }
   const week = session.week || getWeekNum(viewDate);
-  const adj = state.paceAdj[week] || 0;
+  const adj = effectivePaceAdj(week);
   if (adj === 0) { el.innerHTML = ''; return; }
 
   const msg = adj < 0
