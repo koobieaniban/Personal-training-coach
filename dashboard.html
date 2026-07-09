@@ -1347,6 +1347,12 @@ function showWizard() {
       el.classList.toggle('selected', el.dataset.method === wizardSyncMethod);
     });
     document.getElementById('intervalsFields').style.display = wizardSyncMethod === 'intervals_icu' ? 'block' : 'none';
+    document.getElementById('garminFields').style.display    = wizardSyncMethod === 'garmin_connect' ? 'block' : 'none';
+    // Don't pre-fill password on re-open (security); show hint if already connected
+    if (wizardSyncMethod === 'garmin_connect') {
+      const pwEl = document.getElementById('wzGarminPassword');
+      if (pwEl) { pwEl.placeholder = 'Leave blank to keep existing password'; }
+    }
     // Injuries
     const existingInjury = (userProfile.injuries || '').toLowerCase();
     document.querySelectorAll('.injury-tag').forEach(t => t.classList.remove('selected'));
@@ -1456,6 +1462,7 @@ function selectSyncMethod(el) {
   el.classList.add('selected');
   wizardSyncMethod = el.dataset.method;
   document.getElementById('intervalsFields').style.display = wizardSyncMethod === 'intervals_icu' ? 'block' : 'none';
+  document.getElementById('garminFields').style.display    = wizardSyncMethod === 'garmin_connect' ? 'block' : 'none';
 }
 
 async function wizardFinish() {
@@ -1507,6 +1514,22 @@ async function wizardFinish() {
     syncIntervalsIcu();
   }
 
+  if (wizardSyncMethod === 'garmin_connect') {
+    const gEmail    = document.getElementById('wzGarminEmail')?.value?.trim();
+    const gPassword = document.getElementById('wzGarminPassword')?.value?.trim();
+    if (gEmail && gPassword) {
+      if (btn) { btn.textContent = 'Connecting to Garmin…'; btn.disabled = true; }
+      try {
+        const result = await connectGarmin(currentUser.id, gEmail, gPassword);
+        if (result.error) {
+          alert('Garmin connection failed: ' + result.error + '\n\nYou can retry this in your profile settings anytime.');
+        }
+      } catch (e) {
+        alert('Could not reach the Garmin sync service. You can reconnect later in your profile settings.');
+      }
+    }
+  }
+
   renderUserHeader();
   render();
 }
@@ -1514,6 +1537,11 @@ async function wizardFinish() {
 // ── Intervals.icu sync ───────────────────────────────────────────────────────
 // Cloudflare Worker URL — update after deploying worker
 const INTERVALS_WORKER_URL = 'https://dawn-water-4246.koobie-aniban.workers.dev';
+
+// ── Garmin Connect sync (Railway service) ─────────────────────────────────────
+// Set these after deploying the garmin-service to Railway:
+const GARMIN_SERVICE_URL = 'https://personal-training-coach-production.up.railway.app';
+const GARMIN_SERVICE_KEY = 'ea516905f705e4c05bf26aca051ae860846966fc992690e4';
 
 async function syncIntervalsIcu() {
   if (!userProfile?.intervals_icu_id || !userProfile?.intervals_icu_key) return;
@@ -1557,6 +1585,98 @@ async function syncIntervalsIcu() {
     if (matched > 0) render();
   } catch (e) {
     console.warn('Intervals.icu sync failed:', e);
+  }
+}
+
+// ── Garmin Connect sync functions ─────────────────────────────────────────────
+
+async function connectGarmin(userId, email, password) {
+  if (!GARMIN_SERVICE_URL) return { error: 'Garmin service not yet configured — contact your admin.' };
+  const res = await fetch(GARMIN_SERVICE_URL + '/connect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Service-Key': GARMIN_SERVICE_KEY },
+    body: JSON.stringify({ user_id: userId, email, password }),
+  });
+  return res.json();
+}
+
+async function disconnectGarmin(userId) {
+  if (!GARMIN_SERVICE_URL) return;
+  await fetch(GARMIN_SERVICE_URL + '/disconnect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Service-Key': GARMIN_SERVICE_KEY },
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+async function syncFromGarmin(dateStr) {
+  if (!currentUser) return;
+  if (!GARMIN_SERVICE_URL) {
+    alert('Garmin sync not yet configured. Use file upload or screenshot for now.');
+    return;
+  }
+
+  const btn = document.getElementById('garminSyncBtn');
+  if (btn) { btn.textContent = '⏳ Fetching from Garmin…'; btn.disabled = true; }
+
+  try {
+    const res = await fetch(GARMIN_SERVICE_URL + '/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Service-Key': GARMIN_SERVICE_KEY },
+      body: JSON.stringify({ user_id: currentUser.id, session_date: dateStr }),
+    });
+    const json = await res.json();
+
+    if (!res.ok) {
+      if (btn) { btn.textContent = '✕ ' + (json.error || 'Sync failed'); btn.disabled = false; }
+      return;
+    }
+    if (json.status === 'no_activity') {
+      if (btn) { btn.textContent = 'No Garmin activity found — upload a file instead'; btn.disabled = false; }
+      return;
+    }
+
+    // Normalise to match analyzeWorkout expectations
+    const w = json.workout;
+    const laps = (w.laps || []).map(l => ({
+      distM:        l.distM,
+      totalTimeSec: l.totalTimeSec,
+      paceSecPerKm: l.paceSecPerKm,
+      avgHR:        l.avgHR || 0,
+      maxHR:        l.maxHR || 0,
+    }));
+
+    let enriched;
+    if (laps.length) {
+      enriched = analyzeWorkout(laps, dateStr);
+    } else {
+      enriched = {
+        avgPaceSec:  w.avgPaceSec,
+        avgHR:       w.avgHR || 0,
+        totalDist:   w.distanceM || 0,
+        totalTime:   w.totalTimeSec || 0,
+        laps:        [],
+        wins:        [],
+        watch:       [],
+        adjustments: [],
+      };
+    }
+
+    const workout = {
+      source:       'garmin_connect',
+      activityId:   w.activityId,
+      activityName: w.activityName,
+      ...enriched,
+    };
+
+    state.workoutData[dateStr] = workout;
+    saveState(state);
+    await pushWorkoutData(dateStr, workout);
+    recomputeAllPaceAdj();
+    render();
+  } catch (e) {
+    console.error('Garmin sync error:', e);
+    if (btn) { btn.textContent = 'Network error — try again'; btn.disabled = false; }
   }
 }
 
@@ -2566,11 +2686,21 @@ function renderAnalysisCard() {
   const existing = state.workoutData[viewDate];
 
   if (!existing) {
+    const isGarmin = userProfile?.sync_method === 'garmin_connect' && GARMIN_SERVICE_URL;
     el.innerHTML = `
       <div class="upload-zone">
         <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text)">Log this workout</div>
+        ${isGarmin ? `
+        <button id="garminSyncBtn" onclick="syncFromGarmin('${viewDate}')"
+          style="width:100%;padding:12px;background:#1a2e10;border:1.5px solid var(--done);border-radius:10px;color:var(--done);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:12px">
+          ⌚ Fetch from Garmin Connect
+        </button>
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:10px">
+          Make sure your Garmin device has synced first (usually within 2 min of finishing)
+        </div>
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:8px">— or upload manually —</div>` : ''}
         <div class="thumb-grid" id="thumbGrid_${viewDate}">
-          <label class="thumb-slot thumb-add" for="garminFileInput" title="Upload screenshot 1">+</label>
+          <label class="thumb-slot thumb-add" for="garminFileInput" title="Upload file or screenshot">+</label>
         </div>
         <input type="file" id="garminFileInput" accept=".gpx,.tcx,image/*" style="display:none"
           onchange="handleWorkoutFile(this.files[0], '${viewDate}')">
@@ -3442,12 +3572,32 @@ function downloadICS() {
             <div class="so-desc">Take a photo of your watch or app screen — AI reads the data.</div>
           </div>
         </div>
+        <div class="sync-opt" data-method="garmin_connect" onclick="selectSyncMethod(this)">
+          <div class="so-icon">⌚</div>
+          <div>
+            <div class="so-title">Garmin Connect (auto-fetch)</div>
+            <div class="so-desc">Pulls your run data directly after each workout. Best for Garmin users.</div>
+          </div>
+        </div>
         <div class="sync-opt" data-method="manual" onclick="selectSyncMethod(this)">
           <div class="so-icon">✏️</div>
           <div>
             <div class="so-title">Manual splits entry</div>
             <div class="so-desc">Type in your splits after each session. No app or watch needed.</div>
           </div>
+        </div>
+      </div>
+      <div id="garminFields" style="display:none;margin-top:14px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;padding:10px 12px;background:#0f1117;border:1px solid var(--border);border-radius:8px;line-height:1.6">
+          🔒 Your password is encrypted before storage and never sent to third parties. It's only used to pull activity data from your own Garmin account.
+        </div>
+        <div class="wizard-field">
+          <label class="wizard-label">Garmin Connect email</label>
+          <input class="auth-input" id="wzGarminEmail" type="email" placeholder="your@garmin.email" autocomplete="off">
+        </div>
+        <div class="wizard-field">
+          <label class="wizard-label">Garmin Connect password</label>
+          <input class="auth-input" id="wzGarminPassword" type="password" placeholder="Garmin Connect password" autocomplete="new-password">
         </div>
       </div>
       <div id="intervalsFields" style="margin-top:14px">

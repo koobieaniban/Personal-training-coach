@@ -60,11 +60,33 @@ CREATE TABLE IF NOT EXISTS public.workout_data (
 );
 
 -- ── Profile column additions (safe to re-run) ────────────────────────────────
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS race_category    TEXT;
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS training_level   TEXT DEFAULT 'intermediate';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS race_category     TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS training_level    TEXT DEFAULT 'intermediate';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS sessions_per_week INTEGER;
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS training_days    TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS training_days     TEXT;
 ALTER TABLE public.session_feedback ADD COLUMN IF NOT EXISTS station_weights JSONB;
+
+-- ── Running plan columns (safe to re-run) ────────────────────────────────────
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS plan_type      TEXT DEFAULT 'hyrox'; -- 'hyrox' | 'running'
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS race_distance  TEXT;                 -- '10k' | 'half' | 'marathon'
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS goal_time_sec  INTEGER;              -- goal race time in seconds
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS estimated_lthr INTEGER;              -- lactate threshold HR estimate
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS lthr_source    TEXT;                 -- 'age_formula' | 'race_upload'
+
+-- ── Garmin credentials (encrypted at rest, service-role access only) ─────────
+-- RLS is enabled but NO user-facing policies — only Railway service_role key can read/write.
+CREATE TABLE IF NOT EXISTS public.garmin_credentials (
+  user_id              UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+  garmin_email         TEXT        NOT NULL,
+  garmin_password_enc  TEXT        NOT NULL,  -- Fernet-encrypted; key lives only in Railway env
+  garmin_tokens_enc    TEXT,                  -- optional cached OAuth tokens
+  last_synced_at       TIMESTAMPTZ,
+  sync_enabled         BOOLEAN     DEFAULT TRUE,
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.garmin_credentials ENABLE ROW LEVEL SECURITY;
+-- Intentionally no RLS policies — service_role bypasses RLS, anon/authenticated are denied.
 
 -- ── Row Level Security ────────────────────────────────────────────────────────
 
