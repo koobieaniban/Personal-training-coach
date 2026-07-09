@@ -307,6 +307,10 @@
   .sync-badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:3px 8px; border-radius:10px; }
   .sync-badge.synced { background:#0d2018; color:var(--done); }
   .sync-badge.syncing { background:#1e2010; color:var(--accent); }
+  /* ── Plan switcher ── */
+  .plan-switcher { display:flex; gap:6px; padding:8px 16px 4px; }
+  .plan-tab { flex:1; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--muted); font-size:12px; font-weight:700; cursor:pointer; text-align:center; transition:all .15s; }
+  .plan-tab.active { border-color:var(--accent); background:#1e2510; color:var(--accent); }
   .sync-badge.offline { background:#2a2a3a; color:var(--muted); }
 </style>
 </head>
@@ -323,6 +327,8 @@
     <div class="header-date" id="headerDate">–</div>
     <div class="header-week" id="headerWeek">–</div>
   </div>
+
+  <div class="plan-switcher" id="planSwitcher"></div>
 
   <div class="strip-nav-wrap">
     <button class="strip-nav" id="stripNavPrev" onclick="shiftWeekStrip(-1)">‹</button>
@@ -386,7 +392,131 @@ const PACE_TARGETS = {
   // Weeks beyond 6: use taper targets (same as week 6)
 };
 
-// SIM_STATIONS and SIM_DISTANCES are now embedded directly in SESSION_TEMPLATE_DATA
+// ── Running plan engine ───────────────────────────────────────────────────────
+
+const RACE_DIST_KM = { '10k': 10, 'half': 21.0975, 'marathon': 42.195 };
+const PLAN_WEEKS_FOR_DIST = { '10k': 12, 'half': 16, 'marathon': 20 };
+
+function computeLTHR(age) {
+  if (!age) return 155;
+  return Math.round(0.87 * (208 - 0.7 * age));
+}
+
+function computeHRZones(lthr) {
+  return {
+    z1: [0,                        Math.round(lthr * 0.80)],
+    z2: [Math.round(lthr * 0.81),  Math.round(lthr * 0.89)],
+    z3: [Math.round(lthr * 0.90),  Math.round(lthr * 0.93)],
+    z4: [Math.round(lthr * 0.94),  Math.round(lthr * 0.99)],
+    z5: [Math.round(lthr),         999],
+  };
+}
+
+function computeRunningPaceTargets(goalTimeSec, distanceKm) {
+  if (!goalTimeSec || !distanceKm) return null;
+  const race = Math.round(goalTimeSec / distanceKm);
+  // 80/20 polarised offsets scaled to distance
+  const easyOffset = distanceKm <= 10 ? 90 : distanceKm <= 21.1 ? 75 : 60;
+  const longOffset  = easyOffset + 15;
+  return {
+    easy:     race + easyOffset,
+    long:     race + longOffset,
+    tempo:    race + (distanceKm <= 10 ? 20 : 15),
+    interval: Math.max(180, race - 10),
+    race,
+  };
+}
+
+function secToMMSS(sec) {
+  if (!sec || sec <= 0) return '0:00';
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
+
+function buildRunningSessionMap(profile) {
+  const planStartStr = profile.running_plan_start || profile.plan_start || DEFAULT_PLAN_START_STR;
+  const raceDateStr  = profile.running_race_date  || DEFAULT_RACE_DATE_STR;
+  const dist         = profile.race_distance || '10k';
+  const distKm       = RACE_DIST_KM[dist] || 10;
+  const trainingDays = (profile.training_days || 'Mon,Wed,Sat').split(',').filter(Boolean);
+  const goalTimeSec  = profile.goal_time_sec;
+  const paceTargets  = computeRunningPaceTargets(goalTimeSec, distKm);
+  const dayOrder     = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const planStart = new Date(planStartStr + 'T00:00:00');
+  const raceDate  = new Date(raceDateStr  + 'T00:00:00');
+  const totalWeeks = Math.max(1, Math.round((raceDate - planStart) / (7 * 86400000)));
+
+  // Update global RACE_DATE and PLAN_START for this plan
+  RACE_DATE  = raceDate;
+  PLAN_START = planStart;
+
+  // Update PACE_TARGETS so adjustedPace() works for running
+  if (paceTargets) {
+    const pt = {
+      easy:      secToMMSS(paceTargets.easy),
+      long:      secToMMSS(paceTargets.long),
+      tempo:     secToMMSS(paceTargets.tempo),
+      intervals: secToMMSS(paceTargets.interval),
+      race:      secToMMSS(paceTargets.race),
+    };
+    for (let w = 1; w <= Math.max(totalWeeks, 20); w++) {
+      PACE_TARGETS[w] = pt;
+    }
+  }
+
+  const map = {};
+
+  for (let w = 0; w < totalWeeks; w++) {
+    const pct     = w / Math.max(totalWeeks - 1, 1);
+    const phase   = pct < 0.30 ? 'base' : pct < 0.60 ? 'build' : pct < 0.85 ? 'peak' : 'taper';
+    const isRaceWk = w === totalWeeks - 1;
+
+    const weekSessions = isRaceWk
+      ? raceWeekSessions(dist, goalTimeSec)
+      : phaseSessions(phase, w + 1, dist);
+
+    // Find this week's training dates
+    const weekStart = new Date(planStart.getTime() + w * 7 * 86400000);
+    const trainingDates = [];
+    for (let d = 0; d < 7; d++) {
+      const date    = new Date(weekStart.getTime() + d * 86400000);
+      const dayName = dayOrder[date.getDay()];
+      if (trainingDays.includes(dayName)) trainingDates.push(dateKey(date));
+    }
+
+    weekSessions.slice(0, trainingDates.length).forEach((sess, i) => {
+      map[trainingDates[i]] = { ...sess, week: w + 1 };
+    });
+  }
+
+  SESSIONS = map;
+  return map;
+}
+
+function phaseSessions(phase, weekNum, dist) {
+  const longDur = { base: 55, build: 70, peak: 85, taper: 40 };
+  const dur     = longDur[phase] || 55;
+  const qualityType = phase === 'peak' ? 'interval' : 'tempo';
+  const qualityTitle = phase === 'peak' ? 'Interval Run' : 'Tempo Run';
+  const qualityZone  = phase === 'peak' ? 'Z4–5' : 'Z4';
+  const qualityPace  = phase === 'peak' ? 'intervals' : 'tempo';
+
+  return [
+    { type:'run', subtype:'easy',    title:'Easy Run',       subtitle:`30–40 min conversational pace · Z2`,         icon:'🏃', paceRef:'easy',    rest:false },
+    { type:'run', subtype:qualityType, title:qualityTitle,   subtitle:`${phase==='peak'?'6×1km efforts':'25 min'} · ${qualityZone} · quality work`, icon:'⚡', paceRef:qualityPace, rest:false },
+    { type:'run', subtype:'long',    title:'Long Run',        subtitle:`${dur} min easy · Z2 · aerobic base`,        icon:'🛤️', paceRef:'long',    rest:false },
+  ];
+}
+
+function raceWeekSessions(dist, goalTimeSec) {
+  const goalStr = goalTimeSec ? secToMMSS(goalTimeSec) : 'your goal time';
+  return [
+    { type:'run', subtype:'easy',    title:'Easy Shakeout',  subtitle:'20 min very easy · loosen the legs',         icon:'🏃', paceRef:'easy',    rest:false },
+    { type:'run', subtype:'race',    title:`${dist.toUpperCase()} Race Day`, subtitle:`Goal: ${goalStr} · trust the training`, icon:'🏁', paceRef:'race',   rest:false },
+  ];
+}
+
+// ── SIM_STATIONS and SIM_DISTANCES are now embedded directly in SESSION_TEMPLATE_DATA
 // as .stations and .distances properties on each sim session.
 // Use SESSIONS[dateStr]?.stations and SESSIONS[dateStr]?.distances instead.
 
@@ -975,8 +1105,19 @@ function saveState(s) {
 
 async function pushTrainingState(s) {
   if (!currentUser || !sb) return;
-  const { error } = await sb.from('training_state')
-    .upsert({ user_id: currentUser.id, completions: s.completions || {}, pace_adj: s.paceAdj || {}, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  const isRunning = userProfile?.active_plan === 'running';
+  const row = {
+    user_id:    currentUser.id,
+    updated_at: new Date().toISOString(),
+  };
+  if (isRunning) {
+    row.running_completions = s.completions || {};
+    row.running_pace_adj    = s.paceAdj    || {};
+  } else {
+    row.completions = s.completions || {};
+    row.pace_adj    = s.paceAdj    || {};
+  }
+  const { error } = await sb.from('training_state').upsert(row, { onConflict: 'user_id' });
   if (error) console.error('pushTrainingState failed:', error.message);
 }
 
@@ -1032,9 +1173,16 @@ async function loadStateFromSupabase() {
     const workoutData = {};
     (wdRes.data || []).forEach(w => { workoutData[w.session_date] = w.raw_data || {}; });
 
+    // Load both plans' state — activeState is for the currently active plan
+    const isRunning = userProfile?.active_plan === 'running';
     return {
-      completions: ts?.completions || {},
-      paceAdj:     ts?.pace_adj   || {},
+      completions:          isRunning ? (ts?.running_completions || {}) : (ts?.completions || {}),
+      paceAdj:              isRunning ? (ts?.running_pace_adj    || {}) : (ts?.pace_adj    || {}),
+      // Stash the other plan's state so switchPlan() can swap without a DB round-trip
+      _hyroxCompletions:    ts?.completions          || {},
+      _hyroxPaceAdj:        ts?.pace_adj             || {},
+      _runningCompletions:  ts?.running_completions  || {},
+      _runningPaceAdj:      ts?.running_pace_adj     || {},
       feedback,
       workoutData,
     };
@@ -1114,10 +1262,15 @@ async function loadUserData() {
   const { data, error: profileErr } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
   if (profileErr) console.error('loadUserData profile error:', profileErr.message);
   userProfile = data;
-  // Rebuild session map and race date from user's actual plan dates
+  // Rebuild session map for the active plan
   if (userProfile) {
-    buildSessionMap(userProfile.plan_start || DEFAULT_PLAN_START_STR);
-    RACE_DATE = new Date((userProfile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+    if (userProfile.active_plan === 'running' && userProfile.running_race_date) {
+      buildRunningSessionMap(userProfile);
+    } else {
+      buildSessionMap(userProfile.plan_start || DEFAULT_PLAN_START_STR);
+      RACE_DATE = new Date((userProfile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+    }
+    renderPlanSwitcher();
   }
 
   const remote = await loadStateFromSupabase();
@@ -1509,8 +1662,13 @@ async function wizardFinish() {
   }
 
   userProfile = profile;
-  buildSessionMap(profile.plan_start);
-  RACE_DATE = new Date((profile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+  if (profile.active_plan === 'running') {
+    buildRunningSessionMap(profile);
+  } else {
+    buildSessionMap(profile.plan_start);
+    RACE_DATE = new Date((profile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+  }
+  renderPlanSwitcher();
   document.getElementById('wizardOverlay').classList.add('hidden');
   document.getElementById('profilePromptBanner')?.remove();
 
@@ -1524,7 +1682,17 @@ async function wizardFinish() {
     if (gEmail && gPassword) {
       if (btn) { btn.textContent = 'Connecting to Garmin…'; btn.disabled = true; }
       const result = await connectGarmin(currentUser.id, gEmail, gPassword);
-      if (result.error) {
+      if (result.status === 'mfa_required') {
+        // Show MFA prompt inline
+        const code = prompt('Garmin sent a one-time code to your email.\n\nEnter it here:');
+        if (code) {
+          if (btn) btn.textContent = 'Verifying code…';
+          const mfaResult = await connectGarminMfa(currentUser.id, code.trim());
+          if (mfaResult.error) {
+            alert('MFA failed: ' + mfaResult.error + '\n\nYou can retry in your profile settings.');
+          }
+        }
+      } else if (result.error) {
         alert('Garmin connection failed: ' + result.error + '\n\nYou can retry in your profile settings anytime.');
       }
       if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
@@ -1592,9 +1760,9 @@ async function syncIntervalsIcu() {
 // ── Garmin Connect sync functions ─────────────────────────────────────────────
 
 async function connectGarmin(userId, email, password) {
-  if (!GARMIN_SERVICE_URL) return { error: 'Garmin service not yet configured — contact your admin.' };
+  if (!GARMIN_SERVICE_URL) return { error: 'Garmin service not yet configured.' };
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30000); // 30s timeout
+  const timer = setTimeout(() => controller.abort(), 60000);
   try {
     const res = await fetch(GARMIN_SERVICE_URL + '/connect', {
       method: 'POST',
@@ -1606,7 +1774,26 @@ async function connectGarmin(userId, email, password) {
     return res.json();
   } catch (e) {
     clearTimeout(timer);
-    if (e.name === 'AbortError') return { error: 'Connection timed out (30s). Garmin servers may be slow — try again.' };
+    if (e.name === 'AbortError') return { error: 'Timed out — Garmin servers are slow. Try again.' };
+    return { error: e.message };
+  }
+}
+
+async function connectGarminMfa(userId, code) {
+  if (!GARMIN_SERVICE_URL) return { error: 'Garmin service not configured.' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(GARMIN_SERVICE_URL + '/connect/mfa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Service-Key': GARMIN_SERVICE_KEY },
+      body: JSON.stringify({ user_id: userId, code }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    return res.json();
+  } catch (e) {
+    clearTimeout(timer);
     return { error: e.message };
   }
 }
@@ -1689,6 +1876,74 @@ async function syncFromGarmin(dateStr) {
     console.error('Garmin sync error:', e);
     if (btn) { btn.textContent = 'Network error — try again'; btn.disabled = false; }
   }
+}
+
+// ── Plan switcher ─────────────────────────────────────────────────────────────
+
+async function switchPlan(planType) {
+  if (userProfile?.active_plan === planType) return;
+
+  const current = userProfile?.active_plan || 'hyrox';
+
+  // Save current plan's live completions/paceAdj back into the stash
+  if (current === 'hyrox') {
+    state._hyroxCompletions = { ...state.completions };
+    state._hyroxPaceAdj     = { ...state.paceAdj };
+  } else {
+    state._runningCompletions = { ...state.completions };
+    state._runningPaceAdj     = { ...state.paceAdj };
+  }
+
+  // Load the target plan's stashed state
+  if (planType === 'running') {
+    state.completions = { ...(state._runningCompletions || {}) };
+    state.paceAdj     = { ...(state._runningPaceAdj     || {}) };
+  } else {
+    state.completions = { ...(state._hyroxCompletions || {}) };
+    state.paceAdj     = { ...(state._hyroxPaceAdj     || {}) };
+  }
+
+  // Rebuild session map for the new plan
+  if (planType === 'running') {
+    buildRunningSessionMap(userProfile);
+  } else {
+    const hyroxStart = userProfile.plan_start || DEFAULT_PLAN_START_STR;
+    buildSessionMap(hyroxStart);
+    RACE_DATE  = new Date((userProfile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+    PLAN_START = new Date(hyroxStart + 'T00:00:00');
+    // Restore Hyrox PACE_TARGETS
+    Object.assign(PACE_TARGETS, {
+      1: { easy:'6:25', tempo:'6:10', intervals:'5:55' },
+      2: { easy:'6:12', tempo:'5:57', intervals:'5:42' },
+      3: { easy:'6:00', tempo:'5:45', intervals:'5:30' },
+      4: { easy:'6:00', tempo:'5:45', intervals:'5:30' },
+      5: { easy:'6:00', tempo:'5:45', intervals:'5:30' },
+      6: { easy:'6:15', tempo:'6:00', intervals:'5:30' },
+    });
+  }
+
+  // Persist the active_plan to the profile
+  userProfile.active_plan = planType;
+  if (currentUser && sb) {
+    sb.from('profiles').update({ active_plan: planType }).eq('id', currentUser.id).then(({ error }) => {
+      if (error) console.error('switchPlan profile save failed:', error.message);
+    });
+  }
+
+  viewDate = today();
+  saveLocalState(state);
+  recomputeAllPaceAdj();
+  renderPlanSwitcher();
+  render();
+}
+
+function renderPlanSwitcher() {
+  const el = document.getElementById('planSwitcher');
+  if (!el) return;
+  const active = userProfile?.active_plan || 'hyrox';
+  el.innerHTML = `
+    <button class="plan-tab ${active === 'hyrox'   ? 'active' : ''}" onclick="switchPlan('hyrox')">🏋️ Hyrox</button>
+    <button class="plan-tab ${active === 'running' ? 'active' : ''}" onclick="switchPlan('running')">🏃 Running</button>`;
 }
 
 let state = loadState();
@@ -2005,6 +2260,7 @@ function shiftWeekStrip(delta) {
 }
 
 function render() {
+  renderPlanSwitcher();
   renderHeader();
   renderWeekStrip();
   renderPaceBar();

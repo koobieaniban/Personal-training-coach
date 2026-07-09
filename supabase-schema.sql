@@ -66,12 +66,16 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS sessions_per_week INTEGER;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS training_days     TEXT;
 ALTER TABLE public.session_feedback ADD COLUMN IF NOT EXISTS station_weights JSONB;
 
--- ── Running plan columns (safe to re-run) ────────────────────────────────────
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS plan_type      TEXT DEFAULT 'hyrox'; -- 'hyrox' | 'running'
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS race_distance  TEXT;                 -- '10k' | 'half' | 'marathon'
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS goal_time_sec  INTEGER;              -- goal race time in seconds
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS estimated_lthr INTEGER;              -- lactate threshold HR estimate
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS lthr_source    TEXT;                 -- 'age_formula' | 'race_upload'
+-- ── Plan switcher + running plan columns (safe to re-run) ───────────────────
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS active_plan        TEXT DEFAULT 'hyrox';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS race_distance      TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS goal_time_sec      INTEGER;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS estimated_lthr     INTEGER;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS lthr_source        TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS running_race_date  DATE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS running_plan_start DATE;
+ALTER TABLE public.training_state ADD COLUMN IF NOT EXISTS running_completions JSONB DEFAULT '{}';
+ALTER TABLE public.training_state ADD COLUMN IF NOT EXISTS running_pace_adj    JSONB DEFAULT '{}';
 
 -- ── Garmin credentials (encrypted at rest, service-role access only) ─────────
 -- RLS is enabled but NO user-facing policies — only Railway service_role key can read/write.
