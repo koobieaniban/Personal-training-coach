@@ -1540,8 +1540,8 @@ const INTERVALS_WORKER_URL = 'https://dawn-water-4246.koobie-aniban.workers.dev'
 
 // ── Garmin Connect sync (Railway service) ─────────────────────────────────────
 // Set these after deploying the garmin-service to Railway:
-const GARMIN_SERVICE_URL = '';      // e.g. 'https://garmin-service-production-xxxx.up.railway.app'
-const GARMIN_SERVICE_KEY = '';      // must match SERVICE_SECRET env var in Railway
+const GARMIN_SERVICE_URL = 'https://personal-training-coach-production.up.railway.app';
+const GARMIN_SERVICE_KEY = 'ea516905f705e4c05bf26aca051ae860846966fc992690e4';
 
 async function syncIntervalsIcu() {
   if (!userProfile?.intervals_icu_id || !userProfile?.intervals_icu_key) return;
