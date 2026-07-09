@@ -1367,6 +1367,10 @@ function showWizard() {
     }
     document.getElementById('wzInjuryText').value = userProfile.injuries || '';
   }
+  // Always reset the finish button so a previously stuck state doesn't carry over
+  const finishBtn = document.getElementById('startTrainingBtn');
+  if (finishBtn) { finishBtn.textContent = 'Build my plan →'; finishBtn.disabled = false; }
+
   setWizardStep(0);
   document.getElementById('wizardOverlay').classList.remove('hidden');
 }
@@ -1519,14 +1523,11 @@ async function wizardFinish() {
     const gPassword = document.getElementById('wzGarminPassword')?.value?.trim();
     if (gEmail && gPassword) {
       if (btn) { btn.textContent = 'Connecting to Garmin…'; btn.disabled = true; }
-      try {
-        const result = await connectGarmin(currentUser.id, gEmail, gPassword);
-        if (result.error) {
-          alert('Garmin connection failed: ' + result.error + '\n\nYou can retry this in your profile settings anytime.');
-        }
-      } catch (e) {
-        alert('Could not reach the Garmin sync service. You can reconnect later in your profile settings.');
+      const result = await connectGarmin(currentUser.id, gEmail, gPassword);
+      if (result.error) {
+        alert('Garmin connection failed: ' + result.error + '\n\nYou can retry in your profile settings anytime.');
       }
+      if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
     }
   }
 
@@ -1592,12 +1593,22 @@ async function syncIntervalsIcu() {
 
 async function connectGarmin(userId, email, password) {
   if (!GARMIN_SERVICE_URL) return { error: 'Garmin service not yet configured — contact your admin.' };
-  const res = await fetch(GARMIN_SERVICE_URL + '/connect', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Service-Key': GARMIN_SERVICE_KEY },
-    body: JSON.stringify({ user_id: userId, email, password }),
-  });
-  return res.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000); // 30s timeout
+  try {
+    const res = await fetch(GARMIN_SERVICE_URL + '/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Service-Key': GARMIN_SERVICE_KEY },
+      body: JSON.stringify({ user_id: userId, email, password }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    return res.json();
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') return { error: 'Connection timed out (30s). Garmin servers may be slow — try again.' };
+    return { error: e.message };
+  }
 }
 
 async function disconnectGarmin(userId) {

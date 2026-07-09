@@ -14,6 +14,7 @@ import logging
 from datetime import datetime, timedelta
 
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from supabase import create_client, Client
 from garminconnect import Garmin, GarminConnectAuthenticationError
 from cryptography.fernet import Fernet
@@ -22,6 +23,7 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)
+CORS(app)  # allow cross-origin requests from the dashboard
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
