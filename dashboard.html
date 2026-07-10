@@ -354,6 +354,28 @@
   <div style="font-size:11px;color:var(--muted);text-align:center;padding:5px 16px 8px">6 AM reminders · all remaining sessions · iPhone ready</div>
 </div>
 
+<!-- MFA Modal -->
+<div class="auth-overlay hidden" id="mfaOverlay">
+  <div class="auth-box" style="text-align:center">
+    <div style="font-size:32px;margin-bottom:8px">📧</div>
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:6px">Garmin sent you a code</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:4px">Check your email for a one-time code from Garmin.</p>
+    <p style="font-size:13px;color:var(--skipped);font-weight:700;margin-bottom:16px">Enter it quickly — the session expires in <span id="mfaCountdown">90</span>s</p>
+    <input id="mfaCodeInput" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8"
+      placeholder="Enter code"
+      style="width:100%;padding:14px;font-size:22px;font-weight:800;text-align:center;letter-spacing:.15em;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);margin-bottom:12px;outline:none">
+    <button id="mfaSubmitBtn" onclick="submitMfaCode()"
+      style="width:100%;padding:14px;background:var(--accent);color:#000;font-weight:800;font-size:15px;border:none;border-radius:10px;cursor:pointer;margin-bottom:8px">
+      Verify code →
+    </button>
+    <button onclick="cancelMfa()"
+      style="width:100%;padding:10px;background:transparent;color:var(--muted);font-size:13px;border:none;cursor:pointer">
+      Cancel
+    </button>
+    <p id="mfaError" style="font-size:12px;color:var(--skipped);margin-top:8px;display:none"></p>
+  </div>
+</div>
+
 <!-- Feedback Modal -->
 <div class="modal-overlay" id="feedbackModal">
   <div class="modal" style="position:relative">
@@ -1683,19 +1705,14 @@ async function wizardFinish() {
       if (btn) { btn.textContent = 'Connecting to Garmin…'; btn.disabled = true; }
       const result = await connectGarmin(currentUser.id, gEmail, gPassword);
       if (result.status === 'mfa_required') {
-        // Show MFA prompt inline
-        const code = prompt('Garmin sent a one-time code to your email.\n\nEnter it here:');
-        if (code) {
-          if (btn) btn.textContent = 'Verifying code…';
-          const mfaResult = await connectGarminMfa(currentUser.id, code.trim());
-          if (mfaResult.error) {
-            alert('MFA failed: ' + mfaResult.error + '\n\nYou can retry in your profile settings.');
-          }
-        }
+        if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
+        await showMfaModal(currentUser.id);
       } else if (result.error) {
         alert('Garmin connection failed: ' + result.error + '\n\nYou can retry in your profile settings anytime.');
+        if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
+      } else {
+        if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
       }
-      if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
     }
   }
 
@@ -1755,6 +1772,81 @@ async function syncIntervalsIcu() {
   } catch (e) {
     console.warn('Intervals.icu sync failed:', e);
   }
+}
+
+// ── Garmin MFA modal ──────────────────────────────────────────────────────────
+
+let _mfaUserId = null;
+let _mfaTimer  = null;
+
+function showMfaModal(userId) {
+  _mfaUserId = userId;
+  const overlay  = document.getElementById('mfaOverlay');
+  const input    = document.getElementById('mfaCodeInput');
+  const errEl    = document.getElementById('mfaError');
+  const countEl  = document.getElementById('mfaCountdown');
+  const submitBtn = document.getElementById('mfaSubmitBtn');
+
+  errEl.style.display = 'none';
+  errEl.textContent   = '';
+  input.value         = '';
+  submitBtn.disabled  = false;
+  submitBtn.textContent = 'Verify code →';
+  overlay.classList.remove('hidden');
+  input.focus();
+
+  // Countdown timer — session lives ~90s from when Garmin triggered MFA
+  let secs = 90;
+  countEl.textContent = secs;
+  clearInterval(_mfaTimer);
+  _mfaTimer = setInterval(() => {
+    secs--;
+    countEl.textContent = Math.max(0, secs);
+    if (secs <= 0) {
+      clearInterval(_mfaTimer);
+      countEl.textContent = '0';
+    }
+  }, 1000);
+
+  // Allow Enter key to submit
+  input.onkeydown = (e) => { if (e.key === 'Enter') submitMfaCode(); };
+
+  return new Promise(resolve => { overlay._resolve = resolve; });
+}
+
+async function submitMfaCode() {
+  const input     = document.getElementById('mfaCodeInput');
+  const errEl     = document.getElementById('mfaError');
+  const submitBtn = document.getElementById('mfaSubmitBtn');
+  const code      = input.value.replace(/\D/g, '').trim();
+
+  if (!code) { errEl.textContent = 'Please enter the code.'; errEl.style.display = 'block'; return; }
+
+  submitBtn.disabled    = true;
+  submitBtn.textContent = 'Verifying…';
+  errEl.style.display   = 'none';
+
+  const result = await connectGarminMfa(_mfaUserId, code);
+
+  if (result.error) {
+    errEl.textContent   = result.error;
+    errEl.style.display = 'block';
+    submitBtn.disabled  = false;
+    submitBtn.textContent = 'Try again →';
+  } else {
+    closeMfaModal();
+  }
+}
+
+function cancelMfa() {
+  closeMfaModal();
+}
+
+function closeMfaModal() {
+  clearInterval(_mfaTimer);
+  const overlay = document.getElementById('mfaOverlay');
+  overlay.classList.add('hidden');
+  if (overlay._resolve) { overlay._resolve(); overlay._resolve = null; }
 }
 
 // ── Garmin Connect sync functions ─────────────────────────────────────────────
