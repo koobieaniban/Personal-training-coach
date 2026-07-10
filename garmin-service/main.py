@@ -5,11 +5,17 @@ On-demand: called by the dashboard when a user marks a workout complete.
 Required Railway env vars:
   SUPABASE_URL          — Supabase project URL
   SUPABASE_SERVICE_KEY  — service_role key (bypasses RLS)
-  GARMIN_ENCRYPT_KEY    — Fernet key (generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-  SERVICE_SECRET        — shared secret sent in X-Service-Key header by the dashboard
+  GARMIN_ENCRYPT_KEY    — Fernet key
+  SERVICE_SECRET        — shared secret sent in X-Service-Key header
+
+IMPORTANT: deploy with a single gunicorn worker (see Procfile).
+MFA state is held in-process; multiple workers would lose it.
 """
 import os
+import time
 import logging
+import threading
+import importlib.metadata
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
@@ -36,7 +42,6 @@ fernet: Fernet = Fernet(FERNET_KEY)
 sb: Client     = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # In-process MFA sessions — single gunicorn worker only (see Procfile)
-# Key: user_id → {'client': Garmin, 'email': str, 'password': str}
 _pending_mfa: Dict[str, Dict[str, Any]] = {}
 
 
@@ -54,43 +59,89 @@ def decrypt(token: str) -> str:
     return fernet.decrypt(token.encode()).decode()
 
 
-def dump_session(client: Garmin) -> Optional[str]:
-    """Try to export garth session tokens — returns None if not available."""
+def pkg_version(name: str) -> str:
     try:
-        import garth as _g
-        if hasattr(_g, 'client') and hasattr(_g.client, 'dumps'):
-            return _g.client.dumps()
+        return importlib.metadata.version(name)
     except Exception:
-        pass
-    for attr in ('garth', 'client'):
-        obj = getattr(client, attr, None)
-        if obj and hasattr(obj, 'dumps'):
-            try:
-                return obj.dumps()
-            except Exception:
-                pass
-    return None
+        return 'unknown'
 
 
-def save_credentials(user_id: str, email: str, password: str, client: Optional[Garmin] = None):
-    enc_password = encrypt(password)
-    enc_tokens   = None
-    if client:
-        try:
-            raw = dump_session(client)
-            if raw:
-                enc_tokens = encrypt(raw)
-        except Exception:
-            pass
-
+def save_credentials(user_id: str, email: str, password: str):
     sb.table('garmin_credentials').upsert({
         'user_id':             user_id,
         'garmin_email':        email,
-        'garmin_password_enc': enc_password,
-        'garmin_tokens_enc':   enc_tokens,
+        'garmin_password_enc': encrypt(password),
+        'garmin_tokens_enc':   None,
         'sync_enabled':        True,
         'updated_at':          datetime.utcnow().isoformat(),
     }, on_conflict='user_id').execute()
+
+
+def start_garmin_login(user_id: str, email: str, password: str) -> Dict[str, Any]:
+    """
+    Start Garmin login in a background thread so we can handle MFA.
+
+    The thread blocks inside prompt_mfa() waiting for an MFA code.
+    mfa_needed fires the instant Garmin requests a code, so the HTTP
+    response returns quickly and the user sees the prompt right away.
+
+    Returns one of:
+      {'status': 'connected'}
+      {'status': 'mfa_required'}
+      {'status': 'error', 'error': str}
+    """
+    result: Dict[str, Any] = {
+        'client':        None,
+        'error':         None,
+        'mfa_code':      None,
+        'mfa_requested': False,
+        'email':         email,
+        'password':      password,
+    }
+    mfa_code_event = threading.Event()   # unblocks thread when user submits code
+    mfa_needed     = threading.Event()   # fires the instant MFA is requested
+
+    def prompt_mfa(*args) -> str:
+        result['mfa_requested'] = True
+        mfa_needed.set()                 # wake main thread immediately
+        log.info('MFA required for %s — waiting for code', user_id)
+        if not mfa_code_event.wait(timeout=300):
+            raise Exception('MFA code not received within 5 minutes — please try again')
+        return result.get('mfa_code') or ''
+
+    def do_login():
+        try:
+            client = Garmin(email=email, password=password, prompt_mfa=prompt_mfa)
+            client.login()
+            result['client'] = client
+            log.info('Garmin login complete for %s', user_id)
+        except Exception as e:
+            result['error'] = str(e)
+            log.error('Garmin login failed for %s: %s', user_id, e)
+        finally:
+            mfa_needed.set()  # always wake main thread
+
+    t = threading.Thread(target=do_login, daemon=True)
+    result['thread']    = t
+    result['code_event'] = mfa_code_event
+    _pending_mfa[user_id] = result
+    t.start()
+
+    # Wait until login finishes OR Garmin requests an MFA code (whichever is first)
+    mfa_needed.wait(timeout=60)
+
+    if not t.is_alive():
+        _pending_mfa.pop(user_id, None)
+        if result['error']:
+            return {'status': 'error', 'error': result['error']}
+        return {'status': 'connected', 'client': result['client']}
+
+    if result['mfa_requested']:
+        log.info('Returning mfa_required for %s (thread still waiting)', user_id)
+        return {'status': 'mfa_required'}
+
+    _pending_mfa.pop(user_id, None)
+    return {'status': 'error', 'error': 'Garmin login timed out'}
 
 
 def laps_from_splits(splits_response: dict) -> list:
@@ -114,25 +165,20 @@ def laps_from_splits(splits_response: dict) -> list:
 
 @app.route('/health', methods=['GET'])
 def health():
-    try:
-        import garminconnect as _gc
-        gc_ver = getattr(_gc, '__version__', 'unknown')
-    except Exception:
-        gc_ver = 'not installed'
-    try:
-        import garth as _g
-        g_ver = getattr(_g, '__version__', 'unknown')
-    except Exception:
-        g_ver = 'not installed'
-    return jsonify({'status': 'ok', 'garminconnect': gc_ver, 'garth': g_ver})
+    return jsonify({
+        'status':         'ok',
+        'garminconnect':  pkg_version('garminconnect'),
+        'garth':          pkg_version('garth'),
+        'python':         __import__('sys').version,
+    })
 
 
 @app.route('/connect', methods=['POST'])
 def connect():
     """
-    Step 1: Start Garmin login (may or may not require MFA).
+    Step 1: Start Garmin login. May or may not require MFA.
     Body: { user_id, email, password }
-    Returns: { status: 'connected' } | { status: 'mfa_required' } | { error: '...' }
+    Returns: { status: 'connected' } | { status: 'mfa_required' } | { error }
     """
     if not check_auth():
         return jsonify({'error': 'unauthorized'}), 401
@@ -145,22 +191,16 @@ def connect():
     if not all([user_id, email, password]):
         return jsonify({'error': 'missing user_id, email, or password'}), 400
 
-    try:
-        client = Garmin(email=email, password=password, return_on_mfa=True)
-        mfa_status, _ = client.login()
-    except Exception as e:
-        log.error('Garmin login error for %s: %s', user_id, e)
-        return jsonify({'error': str(e)}), 400
+    outcome = start_garmin_login(user_id, email, password)
 
-    if mfa_status == 'needs_mfa':
-        # Store client — MFA state is kept on the client object itself
-        _pending_mfa[user_id] = {'client': client, 'email': email, 'password': password}
-        log.info('MFA required for %s — waiting for code', user_id)
+    if outcome['status'] == 'error':
+        return jsonify({'error': outcome['error']}), 400
+
+    if outcome['status'] == 'mfa_required':
         return jsonify({'status': 'mfa_required'})
 
-    # No MFA needed — login complete
     try:
-        save_credentials(user_id, email, password, client)
+        save_credentials(user_id, email, password)
     except Exception as e:
         return jsonify({'error': f'Connected but DB write failed: {e}'}), 500
 
@@ -172,8 +212,9 @@ def connect():
 def connect_mfa():
     """
     Step 2 (only when MFA required): submit the one-time code.
+    The background thread is still running, blocked waiting for this code.
     Body: { user_id, code }
-    Returns: { status: 'connected' } | { error: '...' }
+    Returns: { status: 'connected' } | { error }
     """
     if not check_auth():
         return jsonify({'error': 'unauthorized'}), 401
@@ -185,24 +226,34 @@ def connect_mfa():
     if not user_id or not mfa_code:
         return jsonify({'error': 'missing user_id or code'}), 400
 
-    pending = _pending_mfa.pop(user_id, None)
+    pending = _pending_mfa.get(user_id)
     if not pending:
         return jsonify({'error': 'No pending MFA session — please click "Connect Garmin" again first'}), 400
 
-    client   = pending['client']
+    # Unblock the waiting thread with the code
+    pending['mfa_code'] = mfa_code
+    pending['code_event'].set()
+
+    # Wait for thread to finish (login completes after code is submitted)
+    t = pending.get('thread')
+    if t:
+        t.join(timeout=30)
+
+    _pending_mfa.pop(user_id, None)
+
+    if pending.get('error'):
+        return jsonify({'error': pending['error']}), 400
+
+    if not pending.get('client'):
+        return jsonify({'error': 'Login did not complete after MFA — please try again'}), 500
+
     email    = pending['email']
     password = pending['password']
 
     try:
-        # client_state is ignored by the library — MFA state is on the client object
-        client.resume_login({}, mfa_code=mfa_code)
+        save_credentials(user_id, email, password)
     except Exception as e:
-        log.error('MFA resume failed for %s: %s', user_id, e)
-        return jsonify({'error': str(e)}), 400
-
-    try:
-        save_credentials(user_id, email, password, client)
-    except Exception as e:
+        log.error('DB write failed for %s: %s', user_id, e)
         return jsonify({'error': f'Auth succeeded but DB write failed: {e}'}), 500
 
     log.info('Garmin MFA complete for %s', user_id)
@@ -213,7 +264,7 @@ def connect_mfa():
 def sync():
     """
     Fetch the latest Garmin activity for a specific session date.
-    Body: { user_id, session_date }  (session_date: YYYY-MM-DD)
+    Body: { user_id, session_date }  (YYYY-MM-DD)
     """
     if not check_auth():
         return jsonify({'error': 'unauthorized'}), 401
