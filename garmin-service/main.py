@@ -7,13 +7,9 @@ Required Railway env vars:
   SUPABASE_SERVICE_KEY  — service_role key (bypasses RLS)
   GARMIN_ENCRYPT_KEY    — Fernet key (generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
   SERVICE_SECRET        — shared secret sent in X-Service-Key header by the dashboard
-
-IMPORTANT: deploy with a single gunicorn worker (see Procfile) — MFA state is in-process.
 """
 import os
-import time
 import logging
-import threading
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
@@ -31,15 +27,16 @@ CORS(app)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-SUPABASE_URL     = os.environ['SUPABASE_URL']
-SUPABASE_KEY     = os.environ['SUPABASE_SERVICE_KEY']
-SERVICE_SECRET   = os.environ.get('SERVICE_SECRET', '')
-FERNET_KEY       = os.environ['GARMIN_ENCRYPT_KEY'].encode()
+SUPABASE_URL   = os.environ['SUPABASE_URL']
+SUPABASE_KEY   = os.environ['SUPABASE_SERVICE_KEY']
+SERVICE_SECRET = os.environ.get('SERVICE_SECRET', '')
+FERNET_KEY     = os.environ['GARMIN_ENCRYPT_KEY'].encode()
 
-fernet: Fernet   = Fernet(FERNET_KEY)
-sb: Client       = create_client(SUPABASE_URL, SUPABASE_KEY)
+fernet: Fernet = Fernet(FERNET_KEY)
+sb: Client     = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# In-process MFA sessions (single gunicorn worker only — see Procfile)
+# In-process MFA sessions — single gunicorn worker only (see Procfile)
+# Key: user_id → {'client': Garmin, 'email': str, 'password': str}
 _pending_mfa: Dict[str, Dict[str, Any]] = {}
 
 
@@ -59,33 +56,32 @@ def decrypt(token: str) -> str:
 
 def dump_session(client: Garmin) -> Optional[str]:
     """Try to export garth session tokens — returns None if not available."""
-    for attr in ('garth',):
+    try:
+        import garth as _g
+        if hasattr(_g, 'client') and hasattr(_g.client, 'dumps'):
+            return _g.client.dumps()
+    except Exception:
+        pass
+    for attr in ('garth', 'client'):
         obj = getattr(client, attr, None)
         if obj and hasattr(obj, 'dumps'):
             try:
                 return obj.dumps()
             except Exception:
                 pass
-    # garth may be a module-level singleton in newer versions
-    try:
-        import garth as _garth
-        if hasattr(_garth, 'client') and hasattr(_garth.client, 'dumps'):
-            return _garth.client.dumps()
-    except Exception:
-        pass
     return None
 
 
 def save_credentials(user_id: str, email: str, password: str, client: Optional[Garmin] = None):
     enc_password = encrypt(password)
     enc_tokens   = None
-    try:
-        if client:
+    if client:
+        try:
             raw = dump_session(client)
             if raw:
                 enc_tokens = encrypt(raw)
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     sb.table('garmin_credentials').upsert({
         'user_id':             user_id,
@@ -95,78 +91,6 @@ def save_credentials(user_id: str, email: str, password: str, client: Optional[G
         'sync_enabled':        True,
         'updated_at':          datetime.utcnow().isoformat(),
     }, on_conflict='user_id').execute()
-
-
-def start_garmin_login(user_id: str, email: str, password: str) -> Dict[str, Any]:
-    """
-    Starts Garmin auth in a background thread to support MFA prompts.
-    Returns one of:
-      {'status': 'connected', 'client': <Garmin>}
-      {'status': 'mfa_required'}
-      {'status': 'error', 'error': <str>}
-    """
-    result: Dict[str, Any] = {
-        'client':        None,
-        'error':         None,
-        'mfa_code':      None,
-        'mfa_requested': False,
-        'email':         email,
-        'password':      password,
-    }
-    mfa_event = threading.Event()
-    result['event'] = mfa_event
-
-    # Two events: one signals "MFA code available", one signals "MFA was requested"
-    mfa_needed = threading.Event()   # set by prompt_mfa when Garmin requests a code
-
-    def prompt_mfa(*args) -> str:
-        result['mfa_requested'] = True
-        mfa_needed.set()  # wake up the main thread immediately
-        log.info('MFA required for %s — waiting for code', user_id)
-        if not mfa_event.wait(timeout=300):
-            raise Exception('MFA code not received within 5 minutes — please try again')
-        return result.get('mfa_code') or ''
-
-    def do_login():
-        try:
-            # New API (garminconnect ≥ 0.2.22): credentials + prompt_mfa in constructor
-            try:
-                client = Garmin(email=email, password=password, prompt_mfa=prompt_mfa)
-                client.login()
-            except TypeError:
-                # Older API: pass prompt_mfa via garth
-                client = Garmin()
-                client.garth.login(email, password, prompt_mfa=prompt_mfa)
-            result['client'] = client
-            log.info('Garmin login completed for %s', user_id)
-        except Exception as e:
-            result['error'] = str(e)
-            log.error('Garmin login failed for %s: %s', user_id, e)
-        finally:
-            mfa_needed.set()  # always wake main thread so it doesn't hang
-
-    t = threading.Thread(target=do_login, daemon=True)
-    result['thread'] = t
-    _pending_mfa[user_id] = result
-    t.start()
-
-    # Wait until either: login completes, MFA is triggered, or 60s timeout
-    mfa_needed.wait(timeout=60)
-
-    if not t.is_alive():
-        _pending_mfa.pop(user_id, None)
-        if result['error']:
-            return {'status': 'error', 'error': result['error']}
-        return {'status': 'connected', 'client': result['client']}
-
-    if result['mfa_requested']:
-        # Thread is alive and blocking — waiting for MFA code via /connect/mfa
-        log.info('Returning mfa_required for %s', user_id)
-        return {'status': 'mfa_required'}
-
-    # Still running but no MFA requested and no result — timed out
-    _pending_mfa.pop(user_id, None)
-    return {'status': 'error', 'error': 'Garmin login timed out (60 s)'}
 
 
 def laps_from_splits(splits_response: dict) -> list:
@@ -206,7 +130,7 @@ def health():
 @app.route('/connect', methods=['POST'])
 def connect():
     """
-    Step 1: Verify Garmin credentials and store them (or trigger MFA).
+    Step 1: Start Garmin login (may or may not require MFA).
     Body: { user_id, email, password }
     Returns: { status: 'connected' } | { status: 'mfa_required' } | { error: '...' }
     """
@@ -221,20 +145,26 @@ def connect():
     if not all([user_id, email, password]):
         return jsonify({'error': 'missing user_id, email, or password'}), 400
 
-    outcome = start_garmin_login(user_id, email, password)
+    try:
+        client = Garmin(email=email, password=password, return_on_mfa=True)
+        mfa_status, _ = client.login()
+    except Exception as e:
+        log.error('Garmin login error for %s: %s', user_id, e)
+        return jsonify({'error': str(e)}), 400
 
-    if outcome['status'] == 'error':
-        return jsonify({'error': outcome['error']}), 400
-
-    if outcome['status'] == 'mfa_required':
+    if mfa_status == 'needs_mfa':
+        # Store client — MFA state is kept on the client object itself
+        _pending_mfa[user_id] = {'client': client, 'email': email, 'password': password}
+        log.info('MFA required for %s — waiting for code', user_id)
         return jsonify({'status': 'mfa_required'})
 
-    # Connected — save encrypted credentials
+    # No MFA needed — login complete
     try:
-        save_credentials(user_id, email, password, outcome.get('client'))
+        save_credentials(user_id, email, password, client)
     except Exception as e:
-        return jsonify({'error': f'Credentials saved but DB write failed: {e}'}), 500
+        return jsonify({'error': f'Connected but DB write failed: {e}'}), 500
 
+    log.info('Garmin connected (no MFA) for %s', user_id)
     return jsonify({'status': 'connected', 'email': email})
 
 
@@ -255,33 +185,28 @@ def connect_mfa():
     if not user_id or not mfa_code:
         return jsonify({'error': 'missing user_id or code'}), 400
 
-    pending = _pending_mfa.get(user_id)
+    pending = _pending_mfa.pop(user_id, None)
     if not pending:
         return jsonify({'error': 'No pending MFA session — please click "Connect Garmin" again first'}), 400
 
-    # Provide code to the waiting login thread
-    pending['mfa_code'] = mfa_code
-    pending['event'].set()
-
-    # Wait for login thread to finish
-    t = pending.get('thread')
-    if t:
-        t.join(timeout=30)
-
-    _pending_mfa.pop(user_id, None)
-
-    if pending.get('error'):
-        return jsonify({'error': pending['error']}), 400
-
-    if not pending.get('client'):
-        return jsonify({'error': 'Login did not complete after MFA — please try again'}), 500
+    client   = pending['client']
+    email    = pending['email']
+    password = pending['password']
 
     try:
-        save_credentials(user_id, pending['email'], pending['password'], pending['client'])
+        # client_state is ignored by the library — MFA state is on the client object
+        client.resume_login({}, mfa_code=mfa_code)
+    except Exception as e:
+        log.error('MFA resume failed for %s: %s', user_id, e)
+        return jsonify({'error': str(e)}), 400
+
+    try:
+        save_credentials(user_id, email, password, client)
     except Exception as e:
         return jsonify({'error': f'Auth succeeded but DB write failed: {e}'}), 500
 
-    return jsonify({'status': 'connected', 'email': pending['email']})
+    log.info('Garmin MFA complete for %s', user_id)
+    return jsonify({'status': 'connected', 'email': email})
 
 
 @app.route('/sync', methods=['POST'])
@@ -316,12 +241,8 @@ def sync():
 
     try:
         password = decrypt(enc_pass)
-        try:
-            client = Garmin(email=email, password=password)
-            client.login()
-        except TypeError:
-            client = Garmin()
-            client.garth.login(email, password)
+        client   = Garmin(email=email, password=password)
+        client.login()
     except Exception as e:
         return jsonify({'error': f'Garmin authentication failed: {e}'}), 500
 
@@ -410,6 +331,7 @@ def disconnect():
     user_id = data.get('user_id', '').strip()
     if not user_id:
         return jsonify({'error': 'missing user_id'}), 400
+    _pending_mfa.pop(user_id, None)
     try:
         sb.table('garmin_credentials').delete().eq('user_id', user_id).execute()
     except Exception as e:
