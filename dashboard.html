@@ -318,7 +318,7 @@
 <div class="app">
   <div class="header">
     <div class="header-top">
-      <div class="logo">Hyrox Plan</div>
+      <div class="logo" id="planLogo">Training Coach</div>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="race-countdown">Race in <span id="daysToRace">–</span> days</div>
         <div id="userHeaderArea"></div>
@@ -352,41 +352,6 @@
   <div style="height:8px"></div>
   <button class="export-btn" style="margin:0 16px;width:calc(100% - 32px);background:#0d1829;border-color:#5b8fff;color:#5b8fff;font-weight:700" onclick="showCalendarExport()">📅 Add workouts to Google Calendar</button>
   <div style="font-size:11px;color:var(--muted);text-align:center;padding:5px 16px 8px">6 AM reminders · all remaining sessions · iPhone ready</div>
-</div>
-
-<!-- Running Setup Modal -->
-<div class="auth-overlay hidden" id="runningSetupOverlay">
-  <div class="auth-box" style="max-width:400px">
-    <div style="font-size:28px;margin-bottom:6px;text-align:center">🏃</div>
-    <h2 style="font-size:18px;font-weight:800;margin-bottom:4px;text-align:center">Set up your running plan</h2>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:18px;text-align:center">Tell us about your race so we can build your 80/20 training plan.</p>
-
-    <label style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Race distance</label>
-    <select id="rsDistance" style="width:100%;padding:11px;margin:6px 0 14px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:15px">
-      <option value="10k">10 km</option>
-      <option value="half">Half marathon (21.1 km)</option>
-      <option value="marathon">Marathon (42.2 km)</option>
-    </select>
-
-    <label style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Race date</label>
-    <input id="rsRaceDate" type="date" style="width:100%;padding:11px;margin:6px 0 14px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:15px">
-
-    <label style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Goal time (h:mm)</label>
-    <input id="rsGoalTime" type="text" placeholder="e.g. 0:55 or 1:45 or 3:30" maxlength="7"
-      style="width:100%;padding:11px;margin:6px 0 4px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:15px">
-    <div id="rsPacePreview" style="font-size:12px;color:var(--accent);margin-bottom:14px;min-height:16px"></div>
-
-    <label style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Plan start date</label>
-    <input id="rsPlanStart" type="date" style="width:100%;padding:11px;margin:6px 0 18px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:15px">
-
-    <button onclick="saveRunningSetup()" style="width:100%;padding:14px;background:var(--accent);color:#000;font-weight:800;font-size:15px;border:none;border-radius:10px;cursor:pointer;margin-bottom:8px" id="rsSubmitBtn">
-      Build my running plan →
-    </button>
-    <button onclick="cancelRunningSetup()" style="width:100%;padding:10px;background:transparent;color:var(--muted);font-size:13px;border:none;cursor:pointer">
-      Cancel
-    </button>
-    <p id="rsError" style="font-size:12px;color:var(--skipped);margin-top:8px;text-align:center;display:none"></p>
-  </div>
 </div>
 
 <!-- MFA Modal -->
@@ -490,7 +455,7 @@ function secToMMSS(sec) {
 }
 
 function buildRunningSessionMap(profile) {
-  const planStartStr = profile.running_plan_start || profile.plan_start || DEFAULT_PLAN_START_STR;
+  const planStartStr = profile.running_plan_start || DEFAULT_PLAN_START_STR;
   const raceDateStr  = profile.running_race_date  || DEFAULT_RACE_DATE_STR;
   const dist         = profile.race_distance || '10k';
   const distKm       = RACE_DIST_KM[dist] || 10;
@@ -1480,8 +1445,7 @@ function showProfileMenu() {
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px">${currentUser?.email || ''}</div>
     <div style="font-size:12px;color:var(--muted)">Sync method</div>
     <div style="font-size:13px;font-weight:600;margin-bottom:14px">${syncLabel[userProfile?.sync_method] || 'Manual entry'}</div>
-    <button class="auth-btn" style="background:var(--card2);color:var(--text);border:1px solid var(--border);margin-bottom:8px;font-size:13px" onclick="document.getElementById('profileMenu').classList.add('hidden');showWizard()">⚙ Update Hyrox profile &amp; sync</button>
-    <button class="auth-btn" style="background:var(--card2);color:var(--text);border:1px solid var(--border);margin-bottom:0;font-size:13px" onclick="document.getElementById('profileMenu').classList.add('hidden');showRunningSetup()">🏃 Edit running goals</button>
+    <button class="auth-btn" style="background:var(--card2);color:var(--text);border:1px solid var(--border);margin-bottom:8px;font-size:13px" onclick="document.getElementById('profileMenu').classList.add('hidden');showWizard()">⚙ Edit training profile &amp; sync</button>
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <button style="width:100%;background:transparent;border:1px solid #2a0f0f;color:var(--skipped);border-radius:8px;padding:9px;font-size:12px;cursor:pointer" onclick="confirmDeleteData()">🗑 Delete my data</button>
     </div>`;
@@ -1518,77 +1482,216 @@ function toggleInjuryTag(el) {
 let wizardTrainingLevel = 'intermediate';
 let wizardFreq = 3;
 let wizardDays = new Set();
+let wizardRaceType = 'hyrox';
+let wizardBaselinePaceSec = null; // sec/km from recent run — used to calibrate plan
 
 function showWizard() {
-  // Always reset injury tags first so stale DOM state never carries over
+  // Detect race type from current profile
+  wizardRaceType = userProfile?.active_plan === 'running' ? 'running' : 'hyrox';
+  wizardBaselinePaceSec = null;
+
+  // Reset injury tags
   document.querySelectorAll('.injury-tag').forEach(t => t.classList.remove('selected'));
   document.querySelector('.injury-tag[data-injury="none"]')?.classList.add('selected');
 
-  // Always seed date fields with current defaults (so HTML blank inputs get a value)
-  document.getElementById('wzRaceDate').value  = DEFAULT_RACE_DATE_STR;
-  document.getElementById('wzPlanStart').value = DEFAULT_PLAN_START_STR;
+  // Pre-fill name
+  document.getElementById('wzName').value = userProfile?.name || '';
 
-  if (userProfile) {
-    document.getElementById('wzName').value = userProfile.name || '';
-    document.getElementById('wzAge').value  = userProfile.age  || '';
-    document.getElementById('wzGoal').value = userProfile.goal_time_min || '';
-    document.getElementById('wzRaceDate').value  = userProfile.race_date  || DEFAULT_RACE_DATE_STR;
-    document.getElementById('wzPlanStart').value = userProfile.plan_start || DEFAULT_PLAN_START_STR;
-    document.getElementById('wzIcuId').value  = userProfile.intervals_icu_id  || '';
-    document.getElementById('wzIcuKey').value = userProfile.intervals_icu_key || '';
-    // Race category
-    const catEl = document.getElementById('wzCategory');
-    if (catEl) catEl.value = userProfile.race_category || '';
-    // Training level
-    wizardTrainingLevel = userProfile.training_level || 'intermediate';
-    selectWizLevel(wizardTrainingLevel);
-    // Frequency + days
-    wizardFreq = userProfile.sessions_per_week || 3;
-    const savedDays = (userProfile.training_days || '').split(',').filter(Boolean);
-    wizardDays = new Set(savedDays);
-    document.querySelectorAll('.wz-freq-btn').forEach((b, i) => b.classList.toggle('selected', i + 1 === wizardFreq));
-    if (wizardFreq) {
-      document.getElementById('wzDayPickerWrap').style.display = 'block';
-      document.getElementById('wzDayPickerLabel').textContent = `Which days? (pick ${wizardFreq})`;
-      document.querySelectorAll('.wz-day-btn').forEach(b => b.classList.toggle('selected', wizardDays.has(b.dataset.day)));
-    }
-    // Sync method
-    wizardSyncMethod = userProfile.sync_method || 'intervals_icu';
-    document.querySelectorAll('.sync-opt[data-method]').forEach(el => {
-      el.classList.toggle('selected', el.dataset.method === wizardSyncMethod);
+  // Pre-fill race type
+  selectRaceType(wizardRaceType, false);
+
+  // Pre-fill Hyrox details
+  document.getElementById('wzRaceDate').value  = userProfile?.race_date  || DEFAULT_RACE_DATE_STR;
+  document.getElementById('wzPlanStart').value = userProfile?.plan_start || DEFAULT_PLAN_START_STR;
+  document.getElementById('wzGoal').value      = userProfile?.goal_time_min || '';
+  const catEl = document.getElementById('wzCategory');
+  if (catEl) catEl.value = userProfile?.race_category || '';
+
+  // Pre-fill Running details
+  document.getElementById('wzRunDist').value      = userProfile?.race_distance || '10k';
+  document.getElementById('wzRunRaceDate').value  = userProfile?.running_race_date  || '';
+  document.getElementById('wzRunPlanStart').value = userProfile?.running_plan_start || '';
+  document.getElementById('wzRunGoal').value      = userProfile?.goal_time_sec
+    ? `${Math.floor(userProfile.goal_time_sec/3600)}:${String(Math.floor((userProfile.goal_time_sec%3600)/60)).padStart(2,'0')}`
+    : '';
+
+  // Pre-fill training level
+  wizardTrainingLevel = userProfile?.training_level || 'intermediate';
+  selectWizLevel(wizardTrainingLevel);
+
+  // Pre-fill training days — shared for both plan types
+  wizardFreq = userProfile?.sessions_per_week || 3;
+  const savedDays = (userProfile?.training_days || 'Mon,Wed,Sat').split(',').filter(Boolean);
+  wizardDays = new Set(savedDays);
+  syncDayPickerUI();
+
+  // Pre-fill sync
+  wizardSyncMethod = userProfile?.sync_method || 'manual';
+  document.querySelectorAll('.sync-opt[data-method]').forEach(el => {
+    el.classList.toggle('selected', el.dataset.method === wizardSyncMethod);
+  });
+  document.getElementById('garminFields').style.display = wizardSyncMethod === 'garmin_connect' ? 'block' : 'none';
+
+  // Pre-fill injuries
+  const existingInjury = (userProfile?.injuries || '').toLowerCase();
+  document.querySelectorAll('.injury-tag').forEach(t => t.classList.remove('selected'));
+  if (existingInjury) {
+    ['knee','shoulder','back','hip','ankle'].forEach(type => {
+      if (existingInjury.includes(type) || (type === 'knee' && existingInjury.includes('meniscus'))) {
+        document.querySelector(`.injury-tag[data-injury="${type}"]`)?.classList.add('selected');
+      }
     });
-    document.getElementById('intervalsFields').style.display = wizardSyncMethod === 'intervals_icu' ? 'block' : 'none';
-    document.getElementById('garminFields').style.display    = wizardSyncMethod === 'garmin_connect' ? 'block' : 'none';
-    // Don't pre-fill password on re-open (security); show hint if already connected
-    if (wizardSyncMethod === 'garmin_connect') {
-      const pwEl = document.getElementById('wzGarminPassword');
-      if (pwEl) { pwEl.placeholder = 'Leave blank to keep existing password'; }
-    }
-    // Injuries
-    const existingInjury = (userProfile.injuries || '').toLowerCase();
-    document.querySelectorAll('.injury-tag').forEach(t => t.classList.remove('selected'));
-    if (existingInjury) {
-      ['knee','shoulder','back','hip','ankle'].forEach(type => {
-        if (existingInjury.includes(type) || (type === 'knee' && existingInjury.includes('meniscus'))) {
-          document.querySelector(`.injury-tag[data-injury="${type}"]`)?.classList.add('selected');
-        }
-      });
-    } else {
-      document.querySelector('.injury-tag[data-injury="none"]')?.classList.add('selected');
-    }
-    document.getElementById('wzInjuryText').value = userProfile.injuries || '';
+  } else {
+    document.querySelector('.injury-tag[data-injury="none"]')?.classList.add('selected');
   }
-  // Always reset the finish button so a previously stuck state doesn't carry over
+  document.getElementById('wzInjuryText').value = userProfile?.injuries || '';
+
+  // Reset finish button
   const finishBtn = document.getElementById('startTrainingBtn');
   if (finishBtn) { finishBtn.textContent = 'Build my plan →'; finishBtn.disabled = false; }
 
-  setWizardStep(0);
+  wizardGoTo('wizScreen-name');
   document.getElementById('wizardOverlay').classList.remove('hidden');
 }
 
-function setWizardStep(n) {
-  document.querySelectorAll('.wizard-step').forEach((el, i) => el.classList.toggle('active', i === n));
-  document.querySelectorAll('.wizard-dot').forEach((el, i) => el.classList.toggle('done', i <= n));
+const WIZARD_STEP_NUM = {
+  'wizScreen-name':       0,
+  'wizScreen-type':       1,
+  'wizScreen-hyrox':      2,
+  'wizScreen-running':    2,
+  'wizScreen-hyrox-level':3,
+  'wizScreen-baseline':   3,
+  'wizScreen-injuries':   4,
+  'wizScreen-connect':    5,
+};
+
+function wizardGoTo(screenId) {
+  document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
+  document.getElementById(screenId)?.classList.add('active');
+  const step = WIZARD_STEP_NUM[screenId] ?? 0;
+  document.querySelectorAll('.wizard-dot').forEach((el, i) => el.classList.toggle('done', i <= step));
+}
+
+function wizardGoNext(screenId) {
+  const errId = 'wzErr-' + screenId.replace('wizScreen-', '');
+  const clearErr = () => { const e = document.getElementById(errId); if (e) { e.textContent = ''; e.style.display='none'; } };
+  const showErr = (msg) => { const e = document.getElementById(errId); if (e) { e.textContent = msg; e.style.display='block'; } else { alert(msg); } };
+
+  clearErr();
+
+  if (screenId === 'wizScreen-name') {
+    if (!document.getElementById('wzName').value.trim()) { showErr('Please enter your name.'); return; }
+    wizardGoTo('wizScreen-type');
+    return;
+  }
+  if (screenId === 'wizScreen-type') {
+    wizardGoTo(wizardRaceType === 'hyrox' ? 'wizScreen-hyrox' : 'wizScreen-running');
+    return;
+  }
+  if (screenId === 'wizScreen-hyrox') {
+    if (!document.getElementById('wzRaceDate').value) { showErr('Please pick a race date.'); return; }
+    if (wizardDays.size === 0) { showErr('Please select at least one training day.'); return; }
+    runWizFeasibility();
+    wizardGoTo('wizScreen-hyrox-level');
+    return;
+  }
+  if (screenId === 'wizScreen-running') {
+    if (!document.getElementById('wzRunRaceDate').value) { showErr('Please pick a race date.'); return; }
+    const goalStr = document.getElementById('wzRunGoal').value;
+    if (!parseGoalTime(goalStr)) { showErr('Goal time must be like 0:55 or 1:45 or 3:30.'); return; }
+    if (wizardDays.size === 0) { showErr('Please select at least one training day.'); return; }
+    wizardGoTo('wizScreen-baseline');
+    return;
+  }
+  if (screenId === 'wizScreen-hyrox-level') {
+    wizardGoTo('wizScreen-injuries');
+    return;
+  }
+  if (screenId === 'wizScreen-baseline') {
+    // Save baseline pace if entered
+    const bDist = document.getElementById('wzBaselineDist').value;
+    const bTime = document.getElementById('wzBaselineTime').value;
+    if (bDist && bTime) {
+      const distKm = RACE_DIST_KM[bDist] || 10;
+      const timeSec = parseGoalTime(bTime);
+      wizardBaselinePaceSec = timeSec ? Math.round(timeSec / distKm) : null;
+    }
+    wizardGoTo('wizScreen-injuries');
+    return;
+  }
+  if (screenId === 'wizScreen-injuries') {
+    wizardGoTo('wizScreen-connect');
+    return;
+  }
+}
+
+function selectRaceType(type, updateUI = true) {
+  wizardRaceType = type;
+  if (updateUI) {
+    document.getElementById('rt-hyrox')?.classList.toggle('selected', type === 'hyrox');
+    document.getElementById('rt-running')?.classList.toggle('selected', type === 'running');
+  } else {
+    document.getElementById('rt-hyrox')?.classList.toggle('selected', type === 'hyrox');
+    document.getElementById('rt-running')?.classList.toggle('selected', type === 'running');
+  }
+}
+
+function syncDayPickerUI() {
+  const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  // Update freq buttons in both screens
+  ['wzHFreqBtns','wzRFreqBtns'].forEach(cid => {
+    const c = document.getElementById(cid);
+    if (!c) return;
+    c.querySelectorAll('.wz-freq-btn').forEach((b, i) => b.classList.toggle('selected', i + 1 === wizardFreq));
+  });
+  // Update day picker label
+  ['wzHDayPickerLabel','wzRDayPickerLabel'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `Which days? (pick ${wizardFreq})`;
+  });
+  // Update day buttons
+  ['wzHDayBtns','wzRDayBtns'].forEach(cid => {
+    const c = document.getElementById(cid);
+    if (!c) return;
+    c.querySelectorAll('.wz-day-btn').forEach(b => b.classList.toggle('selected', wizardDays.has(b.dataset.day)));
+  });
+  // Update hints
+  ['wzHDayHint','wzRDayHint'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const sorted = [...wizardDays].sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+    const rest = dayOrder.filter(d => !wizardDays.has(d));
+    const remaining = wizardFreq - wizardDays.size;
+    el.innerHTML = remaining > 0
+      ? `Select ${remaining} more day${remaining > 1 ? 's' : ''}`
+      : `<span style="color:var(--accent)">Training: ${sorted.join(', ')}</span> · Rest: ${rest.join(', ')}`;
+  });
+  // Show/hide day picker wraps
+  ['wzHDayPickerWrap','wzRDayPickerWrap'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'block';
+  });
+}
+
+function selectWizFreq(n, btn) {
+  wizardFreq = n;
+  wizardDays.clear();
+  syncDayPickerUI();
+}
+
+function toggleWizDay(btn) {
+  const day = btn.dataset.day;
+  const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  if (wizardDays.has(day)) {
+    wizardDays.delete(day);
+  } else {
+    if (wizardDays.size >= wizardFreq) {
+      const first = [...wizardDays].sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b))[0];
+      wizardDays.delete(first);
+    }
+    wizardDays.add(day);
+  }
+  syncDayPickerUI();
 }
 
 function selectWizLevel(level) {
@@ -1598,38 +1701,51 @@ function selectWizLevel(level) {
   });
 }
 
-function selectWizFreq(n, btn) {
-  wizardFreq = n;
-  document.querySelectorAll('.wz-freq-btn').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
-  wizardDays.clear();
-  document.querySelectorAll('.wz-day-btn').forEach(b => b.classList.remove('selected'));
-  document.getElementById('wzDayPickerWrap').style.display = 'block';
-  document.getElementById('wzDayPickerLabel').textContent = `Which days? (pick ${n})`;
-  document.getElementById('wzDayHint').textContent = `Select ${n} day${n > 1 ? 's' : ''}`;
+function updateBaselinePreview() {
+  const el = document.getElementById('wzBaselinePreview');
+  if (!el) return;
+  const bDist = document.getElementById('wzBaselineDist').value;
+  const bTime = document.getElementById('wzBaselineTime').value;
+  const goalStr = document.getElementById('wzRunGoal').value;
+  const goalSec = parseGoalTime(goalStr);
+  const goalDistKm = RACE_DIST_KM[document.getElementById('wzRunDist')?.value || '10k'] || 10;
+
+  if (!bDist || !bTime) { el.innerHTML = ''; return; }
+  const distKm = RACE_DIST_KM[bDist] || 10;
+  const timeSec = parseGoalTime(bTime);
+  if (!timeSec) { el.innerHTML = ''; return; }
+  const basePaceSec = Math.round(timeSec / distKm);
+  const goalPaceSec = goalSec ? Math.round(goalSec / goalDistKm) : null;
+
+  let gapHtml = '';
+  if (goalPaceSec) {
+    const gapSec = basePaceSec - goalPaceSec;
+    if (gapSec > 60) {
+      gapHtml = `<div style="margin-top:8px;padding:10px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:8px;font-size:12px;color:#fbbf24;line-height:1.5">
+        <strong>⚡ ${Math.round(gapSec/60)}min/km gap to goal</strong> — we'll build your base first, then layer in speed work as your race approaches.
+      </div>`;
+    } else if (gapSec > 15) {
+      gapHtml = `<div style="margin-top:8px;padding:10px 12px;background:rgba(110,231,183,.08);border:1px solid rgba(110,231,183,.3);border-radius:8px;font-size:12px;color:#6ee7b7;line-height:1.5">
+        <strong>✓ Close to goal</strong> — we'll focus on race-specific work and sharpening your speed for the final weeks.
+      </div>`;
+    } else {
+      gapHtml = `<div style="margin-top:8px;padding:10px 12px;background:rgba(110,231,183,.08);border:1px solid rgba(110,231,183,.3);border-radius:8px;font-size:12px;color:#6ee7b7;line-height:1.5">
+        <strong>✓ Right on target</strong> — your current pace aligns well with your goal. We'll keep building consistency.
+      </div>`;
+    }
+  }
+
+  el.innerHTML = `<div style="margin-top:4px;font-size:13px;color:var(--accent);font-weight:700">Current pace: ${fmtPace(basePaceSec)} /km · ${secToMMSS(Math.round(timeSec/60)*60).replace(':00','h ')}${timeSec%3600 ? Math.round((timeSec%3600)/60)+'m' : ''}</div>${gapHtml}`;
 }
 
-function toggleWizDay(btn) {
-  const day = btn.dataset.day;
-  const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  if (wizardDays.has(day)) {
-    wizardDays.delete(day);
-    btn.classList.remove('selected');
-  } else {
-    if (wizardDays.size >= wizardFreq) {
-      const first = [...wizardDays].sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b))[0];
-      wizardDays.delete(first);
-      document.querySelector(`.wz-day-btn[data-day="${first}"]`)?.classList.remove('selected');
-    }
-    wizardDays.add(day);
-    btn.classList.add('selected');
-  }
-  const sorted = [...wizardDays].sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
-  const rest = dayOrder.filter(d => !wizardDays.has(d));
-  const remaining = wizardFreq - wizardDays.size;
-  document.getElementById('wzDayHint').innerHTML = remaining > 0
-    ? `Select ${remaining} more day${remaining > 1 ? 's' : ''}`
-    : `<span style="color:var(--accent)">Training: ${sorted.join(', ')}</span> · Rest: ${rest.join(', ')}`;
+function updateWzRunGoalPreview() {
+  const el = document.getElementById('wzRunGoalPreview');
+  if (!el) return;
+  const sec = parseGoalTime(document.getElementById('wzRunGoal').value);
+  const dist = RACE_DIST_KM[document.getElementById('wzRunDist')?.value || '10k'] || 10;
+  if (!sec) { el.textContent = ''; return; }
+  const targets = computeRunningPaceTargets(sec, dist);
+  el.textContent = `Easy ${fmtPace(targets.easy)} · Tempo ${fmtPace(targets.tempo)} · Race ${fmtPace(targets.race)}`;
 }
 
 function runWizFeasibility() {
@@ -1649,35 +1765,25 @@ function runWizFeasibility() {
   const range = [achievable - 5, achievable + 10];
   box.style.display = 'block';
   if (weeksAvail < 2) {
-    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.5;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);color:#f87171';
-    box.innerHTML = `<strong>⚠️ Very little time before race day</strong><br>Only ${weeksAvail} week${weeksAvail !== 1 ? 's' : ''} available. We'll give you the sharpest possible prep for the window available.`;
+    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px;line-height:1.5;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);color:#f87171';
+    box.innerHTML = `<strong>⚠️ Very little time before race day</strong><br>Only ${weeksAvail} week${weeksAvail !== 1 ? 's' : ''} available. We'll give you the sharpest possible prep.`;
   } else if (goalMins < range[0]) {
-    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.5;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fbbf24';
-    box.innerHTML = `<strong>⚡ Bold target — we're here for it</strong><br>That's optimistic for ${weeksAvail} weeks at ${freq}×/week. Let's build toward it and see what your first week's sessions say — we'll recalibrate if needed.`;
+    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px;line-height:1.5;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fbbf24';
+    box.innerHTML = `<strong>⚡ Bold target — we're here for it</strong><br>That's optimistic for ${weeksAvail} weeks at ${freq}×/week. We'll build toward it and recalibrate after week 1.`;
   } else if (goalMins > range[1] + 20) {
-    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.5;background:rgba(110,231,183,.08);border:1px solid rgba(110,231,183,.3);color:#6ee7b7';
-    box.innerHTML = `<strong>✓ Solid and achievable — maybe even beatable</strong><br>Based on your level and timeline, this goal looks well within reach. We may suggest pushing the target up after your first week.`;
+    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px;line-height:1.5;background:rgba(110,231,183,.08);border:1px solid rgba(110,231,183,.3);color:#6ee7b7';
+    box.innerHTML = `<strong>✓ Solid and achievable</strong><br>This goal looks well within reach. We may suggest pushing the target up after week 1.`;
   } else {
-    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.5;background:rgba(110,231,183,.08);border:1px solid rgba(110,231,183,.3);color:#6ee7b7';
-    box.innerHTML = `<strong>✓ Goal looks well-matched</strong><br>With ${weeksAvail} weeks at ${freq}×/week your target of <strong>${Math.floor(goalMins/60)}h ${goalMins%60}m</strong> aligns with your level. We'll check in after week 1 — if you're tracking ahead, we'll push the target up.`;
+    box.style.cssText = 'display:block;border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px;line-height:1.5;background:rgba(110,231,183,.08);border:1px solid rgba(110,231,183,.3);color:#6ee7b7';
+    box.innerHTML = `<strong>✓ Goal looks well-matched</strong><br>With ${weeksAvail} weeks at ${freq}×/week your target of <strong>${Math.floor(goalMins/60)}h ${goalMins%60}m</strong> aligns with your level.`;
   }
-}
-
-function wizardNext(step) {
-  if (step === 0) {
-    const name = document.getElementById('wzName')?.value?.trim();
-    if (!name) { alert('Please enter your name.'); return; }
-  }
-  if (step === 3) runWizFeasibility(); // run feasibility when reaching goal step
-  setWizardStep(step + 1);
 }
 
 function selectSyncMethod(el) {
-  document.querySelectorAll('.sync-opt').forEach(e => e.classList.remove('selected'));
+  document.querySelectorAll('.sync-opt[data-method]').forEach(e => e.classList.remove('selected'));
   el.classList.add('selected');
   wizardSyncMethod = el.dataset.method;
-  document.getElementById('intervalsFields').style.display = wizardSyncMethod === 'intervals_icu' ? 'block' : 'none';
-  document.getElementById('garminFields').style.display    = wizardSyncMethod === 'garmin_connect' ? 'block' : 'none';
+  document.getElementById('garminFields').style.display = wizardSyncMethod === 'garmin_connect' ? 'block' : 'none';
 }
 
 async function wizardFinish() {
@@ -1685,55 +1791,59 @@ async function wizardFinish() {
   if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
 
   if (!currentUser) {
-    alert('Not signed in. Please sign out and sign back in, then try again.');
-    if (btn) { btn.textContent = 'Start training →'; btn.disabled = false; }
+    alert('Not signed in — please sign out and back in.');
+    if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
     return;
   }
 
   const dayOrder = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const profile = {
-    id:               currentUser.id,
-    name:             document.getElementById('wzName')?.value?.trim() || '',
-    age:              parseInt(document.getElementById('wzAge')?.value) || null,
-    goal_time_min:    parseInt(document.getElementById('wzGoal')?.value) || 90,
-    race_date:        document.getElementById('wzRaceDate')?.value || DEFAULT_RACE_DATE_STR,
-    plan_start:       document.getElementById('wzPlanStart')?.value || DEFAULT_PLAN_START_STR,
-    race_category:    document.getElementById('wzCategory')?.value || null,
-    training_level:   wizardTrainingLevel || 'intermediate',
-    sessions_per_week:wizardFreq || null,
-    training_days:    [...wizardDays].sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b)).join(',') || null,
-    sync_method:      wizardSyncMethod,
-    intervals_icu_id: document.getElementById('wzIcuId')?.value?.trim() || null,
-    intervals_icu_key:document.getElementById('wzIcuKey')?.value?.trim() || null,
-    injuries:         (() => {
-      const tags = [...document.querySelectorAll('.injury-tag.selected')].map(t => t.dataset.injury).filter(t => t !== 'none');
-      const text = document.getElementById('wzInjuryText')?.value?.trim() || '';
-      return tags.length ? (text ? `${tags.join(', ')}: ${text}` : tags.join(', ')) : (text || null);
-    })(),
-    updated_at:       new Date().toISOString(),
-  };
+  const sortedDays = [...wizardDays].sort((a,b) => dayOrder.indexOf(a) - dayOrder.indexOf(b)).join(',') || null;
+  const name = document.getElementById('wzName')?.value?.trim() || '';
+  const injuries = (() => {
+    const tags = [...document.querySelectorAll('.injury-tag.selected')].map(t => t.dataset.injury).filter(t => t !== 'none');
+    const text = document.getElementById('wzInjuryText')?.value?.trim() || '';
+    return tags.length ? (text ? `${tags.join(', ')}: ${text}` : tags.join(', ')) : (text || null);
+  })();
 
-  const { error } = await sb.from('profiles').upsert(profile, { onConflict: 'id' });
+  let profile = { id: currentUser.id, name, injuries, sync_method: wizardSyncMethod, sessions_per_week: wizardFreq, training_days: sortedDays, updated_at: new Date().toISOString() };
+
+  if (wizardRaceType === 'hyrox') {
+    Object.assign(profile, {
+      goal_time_min:   parseInt(document.getElementById('wzGoal')?.value) || 90,
+      race_date:       document.getElementById('wzRaceDate')?.value || DEFAULT_RACE_DATE_STR,
+      plan_start:      document.getElementById('wzPlanStart')?.value || DEFAULT_PLAN_START_STR,
+      race_category:   document.getElementById('wzCategory')?.value || null,
+      training_level:  wizardTrainingLevel || 'intermediate',
+      active_plan:     'hyrox',
+    });
+  } else {
+    const goalSec = parseGoalTime(document.getElementById('wzRunGoal')?.value || '') || null;
+    const runPlanStart = document.getElementById('wzRunPlanStart')?.value || DEFAULT_PLAN_START_STR;
+    Object.assign(profile, {
+      race_distance:      document.getElementById('wzRunDist')?.value || '10k',
+      running_race_date:  document.getElementById('wzRunRaceDate')?.value || '',
+      running_plan_start: runPlanStart,
+      goal_time_sec:      goalSec,
+      active_plan:        'running',
+    });
+  }
+
+  let { error } = await sb.from('profiles').upsert(profile, { onConflict: 'id' });
   if (error) {
-    if (btn) { btn.textContent = 'Error: ' + error.message; btn.disabled = false; }
+    if (btn) { btn.textContent = 'Error — ' + error.message; btn.disabled = false; }
     return;
   }
 
-  userProfile = profile;
-  if (profile.active_plan === 'running') {
-    buildRunningSessionMap(profile);
-  } else {
+  userProfile = { ...(userProfile || {}), ...profile };
+
+  if (wizardRaceType === 'hyrox') {
     buildSessionMap(profile.plan_start);
     RACE_DATE = new Date((profile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
-  }
-  renderPlanSwitcher();
-  document.getElementById('wizardOverlay').classList.add('hidden');
-  document.getElementById('profilePromptBanner')?.remove();
-
-  if (wizardSyncMethod === 'intervals_icu' && profile.intervals_icu_id && profile.intervals_icu_key) {
-    syncIntervalsIcu();
+  } else {
+    buildRunningSessionMap(userProfile);
   }
 
+  // Garmin connect if chosen
   if (wizardSyncMethod === 'garmin_connect') {
     const gEmail    = document.getElementById('wzGarminEmail')?.value?.trim();
     const gPassword = document.getElementById('wzGarminPassword')?.value?.trim();
@@ -1745,13 +1855,14 @@ async function wizardFinish() {
         await showMfaModal(currentUser.id);
       } else if (result.error) {
         alert('Garmin connection failed: ' + result.error + '\n\nYou can retry in your profile settings anytime.');
-        if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
-      } else {
-        if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
       }
+      if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
     }
   }
 
+  renderPlanSwitcher();
+  document.getElementById('wizardOverlay').classList.add('hidden');
+  document.getElementById('profilePromptBanner')?.remove();
   renderUserHeader();
   render();
 }
@@ -2021,90 +2132,6 @@ function fmtPace(secPerKm) {
   return `${m}:${String(s).padStart(2,'0')} /km`;
 }
 
-function showRunningSetup() {
-  const overlay = document.getElementById('runningSetupOverlay');
-  const p       = userProfile || {};
-
-  // Pre-fill from existing profile
-  document.getElementById('rsDistance').value  = p.race_distance || '10k';
-  document.getElementById('rsRaceDate').value  = p.running_race_date || '';
-  document.getElementById('rsPlanStart').value = p.running_plan_start || '';
-  document.getElementById('rsGoalTime').value  = p.goal_time_sec
-    ? `${Math.floor(p.goal_time_sec/3600)}:${String(Math.floor((p.goal_time_sec%3600)/60)).padStart(2,'0')}`
-    : '';
-  document.getElementById('rsError').style.display = 'none';
-  document.getElementById('rsSubmitBtn').disabled = false;
-  document.getElementById('rsSubmitBtn').textContent = 'Build my running plan →';
-  updateRsPacePreview();
-
-  overlay.classList.remove('hidden');
-
-  document.getElementById('rsGoalTime').oninput = updateRsPacePreview;
-  document.getElementById('rsDistance').onchange = updateRsPacePreview;
-}
-
-function updateRsPacePreview() {
-  const el   = document.getElementById('rsPacePreview');
-  const sec  = parseGoalTime(document.getElementById('rsGoalTime').value);
-  const dist = RACE_DIST_KM[document.getElementById('rsDistance').value] || 10;
-  if (!sec) { el.textContent = ''; return; }
-  const targets = computeRunningPaceTargets(sec, dist);
-  el.textContent = `Easy ${fmtPace(targets.easy)} · Tempo ${fmtPace(targets.tempo)} · Race ${fmtPace(targets.race)}`;
-}
-
-async function saveRunningSetup() {
-  const dist      = document.getElementById('rsDistance').value;
-  const raceDate  = document.getElementById('rsRaceDate').value;
-  const planStart = document.getElementById('rsPlanStart').value;
-  const goalStr   = document.getElementById('rsGoalTime').value;
-  const errEl     = document.getElementById('rsError');
-  const btn       = document.getElementById('rsSubmitBtn');
-
-  if (!raceDate) { errEl.textContent = 'Please pick a race date.'; errEl.style.display = 'block'; return; }
-  const goalSec = parseGoalTime(goalStr);
-  if (!goalSec) { errEl.textContent = 'Goal time must be like 0:55 or 1:45 or 3:30.'; errEl.style.display = 'block'; return; }
-
-  btn.disabled = true; btn.textContent = 'Saving…';
-
-  const updates = {
-    race_distance:       dist,
-    running_race_date:   raceDate,
-    running_plan_start:  planStart || null,
-    goal_time_sec:       goalSec,
-    active_plan:         'running',
-  };
-
-  if (currentUser && sb) {
-    const { error } = await sb.from('profiles').update(updates).eq('id', currentUser.id);
-    if (error) {
-      errEl.textContent = 'Save failed: ' + error.message;
-      errEl.style.display = 'block';
-      btn.disabled = false; btn.textContent = 'Build my running plan →';
-      return;
-    }
-  }
-
-  Object.assign(userProfile, updates);
-
-  // Swap state to running
-  state._hyroxCompletions = state.completions;
-  state._hyroxPaceAdj     = state.paceAdj;
-  state.completions = state._runningCompletions || {};
-  state.paceAdj     = state._runningPaceAdj    || {};
-  userProfile.active_plan = 'running';
-
-  buildRunningSessionMap(userProfile);
-  document.getElementById('runningSetupOverlay').classList.add('hidden');
-  saveLocalState(state);
-  recomputeAllPaceAdj();
-  renderPlanSwitcher();
-  render();
-}
-
-function cancelRunningSetup() {
-  document.getElementById('runningSetupOverlay').classList.add('hidden');
-}
-
 // ── Plan switcher ─────────────────────────────────────────────────────────────
 
 async function switchPlan(planType) {
@@ -2112,7 +2139,7 @@ async function switchPlan(planType) {
 
   // If switching to running and no running profile yet, show setup wizard
   if (planType === 'running' && !userProfile?.running_race_date) {
-    showRunningSetup();
+    showWizard();
     return;
   }
 
@@ -2537,6 +2564,8 @@ function renderHeader() {
   const session = SESSIONS[viewDate];
   const wkLabel = session && !session.rest ? `Week ${week} of ${totalPlanWeeks()}` : `Week ${week} — Rest Day`;
   document.getElementById('headerWeek').textContent = wkLabel;
+  const logoEl = document.getElementById('planLogo');
+  if (logoEl) logoEl.textContent = (userProfile?.active_plan === 'running') ? 'Running Plan' : 'Hyrox Plan';
 }
 
 function renderWeekStrip() {
@@ -2692,7 +2721,7 @@ function renderSession() {
     </div>`;
   }).join('');
 
-  const injNoteHtml = proto && !session.blocks.some(b => b.knee)
+  const injNoteHtml = proto && !(session.blocks || []).some(b => b.knee)
     ? `<div class="knee-note" style="margin-bottom:14px">🩹 ${proto.note}</div>` : '';
 
   const noteHtml = (session.note ? `<div class="knee-note" style="margin-bottom:14px">💡 ${session.note}</div>` : '') + injNoteHtml;
@@ -2714,6 +2743,51 @@ function renderSession() {
     </div>`;
   } else {
     actionHtml = `<div class="action-bar"><button class="btn btn-undo btn-full" onclick="undoComplete()">Undo skip</button></div>`;
+  }
+
+  // Running session — render with pace targets instead of blocks
+  if (session.type === 'run') {
+    const paceT = PACE_TARGETS[week] || PACE_TARGETS[1] || {};
+    const paceRef = session.paceRef || 'easy';
+    const targetPace = paceT[paceRef] || paceT.easy || '–';
+    const zoneLabel = { easy:'Zone 2 · conversational', tempo:'Zone 4 · comfortably hard', interval:'Zone 4–5 · race effort', long:'Zone 2 · aerobic base', race:'Race effort · everything you have' };
+    const zone = zoneLabel[paceRef] || '';
+    const nudge = getVolumeNudge(week);
+    const nudgeHtml = nudge === 'strong'
+      ? `<div class="volume-nudge">💪 <strong>Feeling easy?</strong> Consider extending today's run by 5–10 min or adding a final interval.</div>`
+      : nudge === 'mild'
+      ? `<div class="volume-nudge">📈 <strong>Pace feeling manageable?</strong> If legs feel good, push the last portion 5s/km faster than target.</div>`
+      : '';
+    area.innerHTML = nudgeHtml + `
+      <div class="session-card">
+        <div class="session-header">
+          <div class="session-type-badge type-run">${session.icon}</div>
+          <div class="session-title">
+            <h2>${session.title}</h2>
+            <div class="session-subtitle">${session.subtitle || ''}</div>
+          </div>
+          <div class="status-badge status-${statusCls}">${statusLabel}</div>
+        </div>
+        <div class="session-body">
+          ${noteHtml}
+          <div class="block">
+            <div class="block-title">Target pace</div>
+            <div class="block-item" style="font-size:22px;font-weight:800;color:var(--accent);letter-spacing:.02em">${targetPace} /km</div>
+            <div class="block-item" style="color:var(--muted)">${zone}</div>
+          </div>
+          ${paceT.easy ? `<div class="block">
+            <div class="block-title">Week ${week} pace guide</div>
+            <div class="block-item">Easy (Z2): ${paceT.easy} /km</div>
+            ${paceT.tempo ? `<div class="block-item">Tempo (Z4): ${paceT.tempo} /km</div>` : ''}
+            ${paceT.intervals ? `<div class="block-item">Intervals (Z4–5): ${paceT.intervals} /km</div>` : ''}
+            ${paceT.long ? `<div class="block-item">Long run (Z2): ${paceT.long} /km</div>` : ''}
+            ${paceT.race ? `<div class="block-item">Race pace: ${paceT.race} /km</div>` : ''}
+          </div>` : ''}
+        </div>
+        ${actionHtml}
+      </div>`;
+    renderStats();
+    return;
   }
 
   const nudge = session.type === 'run' ? getVolumeNudge(week) : null;
@@ -3907,36 +3981,51 @@ function downloadICS() {
       <div class="wizard-dot" id="wd3"></div>
       <div class="wizard-dot" id="wd4"></div>
       <div class="wizard-dot" id="wd5"></div>
-      <div class="wizard-dot" id="wd6"></div>
     </div>
 
-    <!-- Step 1: Profile basics -->
-    <div class="wizard-step active" id="wizStep0">
-      <h2>Let's set up your profile</h2>
-      <p class="wizard-sub">This personalises your pace targets and race projection.</p>
+    <!-- Step 0: Name -->
+    <div class="wizard-step active" id="wizScreen-name">
+      <h2>Let's set up your plan</h2>
+      <p class="wizard-sub">A few quick questions to personalise your training.</p>
       <div class="wizard-field">
         <label class="wizard-label">Your name</label>
         <input class="auth-input" id="wzName" type="text" placeholder="Your name">
       </div>
-      <div class="wizard-field">
-        <label class="wizard-label">Age</label>
-        <input class="auth-input" id="wzAge" type="number" placeholder="e.g. 32" min="16" max="80">
-      </div>
-      <button class="wizard-next" onclick="wizardNext(0)">Next →</button>
+      <p id="wzErr-name" style="font-size:12px;color:var(--skipped);display:none;margin-top:-8px;margin-bottom:8px"></p>
+      <button class="wizard-next" onclick="wizardGoNext('wizScreen-name')">Next →</button>
     </div>
 
-    <!-- Step 2: Race details -->
-    <div class="wizard-step" id="wizStep1">
-      <h2>Your race</h2>
-      <p class="wizard-sub">We'll build your plan backwards from race day.</p>
-      <div class="wizard-field">
-        <label class="wizard-label">Race date</label>
-        <input class="auth-input" id="wzRaceDate" type="date">
+    <!-- Step 1: Race type -->
+    <div class="wizard-step" id="wizScreen-type">
+      <h2>What are you training for?</h2>
+      <p class="wizard-sub">We'll build a plan tailored to your race.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+        <div class="sync-opt selected" id="rt-hyrox" onclick="selectRaceType('hyrox')" style="cursor:pointer">
+          <div class="so-icon">🏋️</div>
+          <div>
+            <div class="so-title">Hyrox</div>
+            <div class="so-desc">Running + 8 functional fitness stations. Build power, running endurance, and race-pace specificity.</div>
+          </div>
+        </div>
+        <div class="sync-opt" id="rt-running" onclick="selectRaceType('running')" style="cursor:pointer">
+          <div class="so-icon">🏃</div>
+          <div>
+            <div class="so-title">Running</div>
+            <div class="so-desc">10k, half marathon, or full marathon. 80/20 polarised training with LTHR-anchored pace zones.</div>
+          </div>
+        </div>
       </div>
+      <button class="wizard-next" onclick="wizardGoNext('wizScreen-type')">Next →</button>
+    </div>
+
+    <!-- Step 2a: Hyrox details -->
+    <div class="wizard-step" id="wizScreen-hyrox">
+      <h2>Your Hyrox race</h2>
+      <p class="wizard-sub">We build your plan backwards from race day.</p>
       <div class="wizard-field">
         <label class="wizard-label">Race category</label>
         <select class="auth-input" id="wzCategory">
-          <option value="">Select your category…</option>
+          <option value="">Select category…</option>
           <option value="open_men">Open Men</option>
           <option value="open_women">Open Women</option>
           <option value="pro_men">Pro Men</option>
@@ -3948,49 +4037,21 @@ function downloadICS() {
         </select>
       </div>
       <div class="wizard-field">
+        <label class="wizard-label">Race date</label>
+        <input class="auth-input" id="wzRaceDate" type="date">
+      </div>
+      <div class="wizard-field">
         <label class="wizard-label">Plan start date</label>
         <input class="auth-input" id="wzPlanStart" type="date">
       </div>
-      <button class="wizard-next" onclick="wizardNext(1)">Next →</button>
-    </div>
-
-    <!-- Step 3: Training level -->
-    <div class="wizard-step" id="wizStep2">
-      <h2>Your training level</h2>
-      <p class="wizard-sub">This sets your starting pace targets and how we ramp up intensity.</p>
-      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
-        <div class="sync-opt" id="lvl_beginner" onclick="selectWizLevel('beginner')" style="cursor:pointer">
-          <div class="so-icon">🌱</div>
-          <div>
-            <div class="so-title">Beginner — Starting fresh</div>
-            <div class="so-desc">Little or no structured training. We ease you in gradually and adapt from your first week's feedback.</div>
-          </div>
-        </div>
-        <div class="sync-opt selected" id="lvl_intermediate" onclick="selectWizLevel('intermediate')" style="cursor:pointer">
-          <div class="so-icon">🔥</div>
-          <div>
-            <div class="so-title">Intermediate — Active & training</div>
-            <div class="so-desc">You train regularly or are mid-prep. We add Hyrox-specific structure and build from your current base.</div>
-          </div>
-        </div>
-        <div class="sync-opt" id="lvl_advanced" onclick="selectWizLevel('advanced')" style="cursor:pointer">
-          <div class="so-icon">⚡</div>
-          <div>
-            <div class="so-title">Advanced — Hyrox trained</div>
-            <div class="so-desc">You've been training Hyrox consistently. Higher starting intensity, less ramp-up, faster targets from day 1.</div>
-          </div>
-        </div>
-      </div>
-      <button class="wizard-next" onclick="wizardNext(2)">Next →</button>
-    </div>
-
-    <!-- Step 4: Training schedule -->
-    <div class="wizard-step" id="wizStep3">
-      <h2>Your training schedule</h2>
-      <p class="wizard-sub">How many days per week can you train? We'll protect your rest days.</p>
       <div class="wizard-field">
-        <label class="wizard-label">Days per week</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px" id="wzFreqBtns">
+        <label class="wizard-label">Goal finish time (total minutes — e.g. 90 = 1h 30m)</label>
+        <input class="auth-input" id="wzGoal" type="number" placeholder="e.g. 90" min="45" max="240" oninput="runWizFeasibility()">
+        <div id="wzFeasBox" style="display:none"></div>
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Training days per week</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px" id="wzHFreqBtns">
           <button class="wz-freq-btn" onclick="selectWizFreq(1,this)">1</button>
           <button class="wz-freq-btn" onclick="selectWizFreq(2,this)">2</button>
           <button class="wz-freq-btn selected" onclick="selectWizFreq(3,this)">3</button>
@@ -3998,37 +4059,132 @@ function downloadICS() {
           <button class="wz-freq-btn" onclick="selectWizFreq(5,this)">5</button>
           <button class="wz-freq-btn" onclick="selectWizFreq(6,this)">6</button>
         </div>
-      </div>
-      <div class="wizard-field" id="wzDayPickerWrap" style="display:none">
-        <label class="wizard-label" id="wzDayPickerLabel">Which days?</label>
-        <div style="display:flex;gap:6px;margin-bottom:8px" id="wzDayBtns">
-          <button class="wz-day-btn" data-day="Mon" onclick="toggleWizDay(this)">Mon</button>
-          <button class="wz-day-btn" data-day="Tue" onclick="toggleWizDay(this)">Tue</button>
-          <button class="wz-day-btn" data-day="Wed" onclick="toggleWizDay(this)">Wed</button>
-          <button class="wz-day-btn" data-day="Thu" onclick="toggleWizDay(this)">Thu</button>
-          <button class="wz-day-btn" data-day="Fri" onclick="toggleWizDay(this)">Fri</button>
-          <button class="wz-day-btn" data-day="Sat" onclick="toggleWizDay(this)">Sat</button>
-          <button class="wz-day-btn" data-day="Sun" onclick="toggleWizDay(this)">Sun</button>
+        <div id="wzHDayPickerWrap" style="display:block">
+          <label class="wizard-label" id="wzHDayPickerLabel">Which days? (pick 3)</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px" id="wzHDayBtns">
+            <button class="wz-day-btn" data-day="Mon" onclick="toggleWizDay(this)">Mon</button>
+            <button class="wz-day-btn" data-day="Tue" onclick="toggleWizDay(this)">Tue</button>
+            <button class="wz-day-btn" data-day="Wed" onclick="toggleWizDay(this)">Wed</button>
+            <button class="wz-day-btn" data-day="Thu" onclick="toggleWizDay(this)">Thu</button>
+            <button class="wz-day-btn" data-day="Fri" onclick="toggleWizDay(this)">Fri</button>
+            <button class="wz-day-btn" data-day="Sat" onclick="toggleWizDay(this)">Sat</button>
+            <button class="wz-day-btn" data-day="Sun" onclick="toggleWizDay(this)">Sun</button>
+          </div>
+          <div id="wzHDayHint" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
         </div>
-        <div id="wzDayHint" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
       </div>
-      <button class="wizard-next" onclick="wizardNext(3)">Next →</button>
+      <p id="wzErr-hyrox" style="font-size:12px;color:var(--skipped);display:none;margin-bottom:8px"></p>
+      <button class="wizard-next" onclick="wizardGoNext('wizScreen-hyrox')">Next →</button>
     </div>
 
-    <!-- Step 5: Goal time + feasibility -->
-    <div class="wizard-step" id="wizStep4">
-      <h2>Your goal time</h2>
-      <p class="wizard-sub">We'll tailor pace targets around this. We'll tell you if the timeline looks right.</p>
+    <!-- Step 2b: Running details -->
+    <div class="wizard-step" id="wizScreen-running">
+      <h2>Your running race</h2>
+      <p class="wizard-sub">We'll build your 80/20 polarised plan from this.</p>
       <div class="wizard-field">
-        <label class="wizard-label">Goal finish time (minutes total — e.g. 90 for 1h 30m)</label>
-        <input class="auth-input" id="wzGoal" type="number" placeholder="e.g. 90" min="45" max="240" oninput="runWizFeasibility()">
+        <label class="wizard-label">Race distance</label>
+        <select class="auth-input" id="wzRunDist" onchange="updateWzRunGoalPreview()">
+          <option value="10k">10 km</option>
+          <option value="half">Half marathon (21.1 km)</option>
+          <option value="marathon">Marathon (42.2 km)</option>
+        </select>
       </div>
-      <div id="wzFeasBox" style="display:none;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.5"></div>
-      <button class="wizard-next" onclick="wizardNext(4)">Next →</button>
+      <div class="wizard-field">
+        <label class="wizard-label">Race date</label>
+        <input class="auth-input" id="wzRunRaceDate" type="date">
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Plan start date</label>
+        <input class="auth-input" id="wzRunPlanStart" type="date">
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Goal time (h:mm — e.g. 0:55 or 1:45 or 3:30)</label>
+        <input class="auth-input" id="wzRunGoal" type="text" placeholder="e.g. 0:55 or 1:45 or 3:30" maxlength="7" oninput="updateWzRunGoalPreview()">
+        <div id="wzRunGoalPreview" style="font-size:12px;color:var(--accent);margin-top:4px;min-height:16px"></div>
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Training days per week</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px" id="wzRFreqBtns">
+          <button class="wz-freq-btn" onclick="selectWizFreq(1,this)">1</button>
+          <button class="wz-freq-btn" onclick="selectWizFreq(2,this)">2</button>
+          <button class="wz-freq-btn selected" onclick="selectWizFreq(3,this)">3</button>
+          <button class="wz-freq-btn" onclick="selectWizFreq(4,this)">4</button>
+          <button class="wz-freq-btn" onclick="selectWizFreq(5,this)">5</button>
+          <button class="wz-freq-btn" onclick="selectWizFreq(6,this)">6</button>
+        </div>
+        <div id="wzRDayPickerWrap" style="display:block">
+          <label class="wizard-label" id="wzRDayPickerLabel">Which days? (pick 3)</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px" id="wzRDayBtns">
+            <button class="wz-day-btn" data-day="Mon" onclick="toggleWizDay(this)">Mon</button>
+            <button class="wz-day-btn" data-day="Tue" onclick="toggleWizDay(this)">Tue</button>
+            <button class="wz-day-btn" data-day="Wed" onclick="toggleWizDay(this)">Wed</button>
+            <button class="wz-day-btn" data-day="Thu" onclick="toggleWizDay(this)">Thu</button>
+            <button class="wz-day-btn" data-day="Fri" onclick="toggleWizDay(this)">Fri</button>
+            <button class="wz-day-btn" data-day="Sat" onclick="toggleWizDay(this)">Sat</button>
+            <button class="wz-day-btn" data-day="Sun" onclick="toggleWizDay(this)">Sun</button>
+          </div>
+          <div id="wzRDayHint" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+        </div>
+      </div>
+      <p id="wzErr-running" style="font-size:12px;color:var(--skipped);display:none;margin-bottom:8px"></p>
+      <button class="wizard-next" onclick="wizardGoNext('wizScreen-running')">Next →</button>
     </div>
 
-    <!-- Step 6: Injuries -->
-    <div class="wizard-step" id="wizStep5">
+    <!-- Step 3a: Hyrox training level -->
+    <div class="wizard-step" id="wizScreen-hyrox-level">
+      <h2>Your training level</h2>
+      <p class="wizard-sub">This sets your starting pace targets and how we ramp up intensity.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+        <div class="sync-opt" id="lvl_beginner" onclick="selectWizLevel('beginner')" style="cursor:pointer">
+          <div class="so-icon">🌱</div>
+          <div>
+            <div class="so-title">Beginner — Starting fresh</div>
+            <div class="so-desc">Little or no structured training. We ease you in gradually and adapt from your first week.</div>
+          </div>
+        </div>
+        <div class="sync-opt selected" id="lvl_intermediate" onclick="selectWizLevel('intermediate')" style="cursor:pointer">
+          <div class="so-icon">🔥</div>
+          <div>
+            <div class="so-title">Intermediate — Active &amp; training</div>
+            <div class="so-desc">You train regularly or are mid-prep. We add Hyrox-specific structure from your current base.</div>
+          </div>
+        </div>
+        <div class="sync-opt" id="lvl_advanced" onclick="selectWizLevel('advanced')" style="cursor:pointer">
+          <div class="so-icon">⚡</div>
+          <div>
+            <div class="so-title">Advanced — Hyrox trained</div>
+            <div class="so-desc">You've been training Hyrox consistently. Higher intensity, faster targets from day 1.</div>
+          </div>
+        </div>
+      </div>
+      <button class="wizard-next" onclick="wizardGoNext('wizScreen-hyrox-level')">Next →</button>
+    </div>
+
+    <!-- Step 3b: Running baseline -->
+    <div class="wizard-step" id="wizScreen-baseline">
+      <h2>Your current fitness</h2>
+      <p class="wizard-sub">Share a recent run so we can calibrate your training zones to where you are now.</p>
+      <div class="wizard-field">
+        <label class="wizard-label">Distance</label>
+        <select class="auth-input" id="wzBaselineDist" onchange="updateBaselinePreview()">
+          <option value="">Select recent run distance…</option>
+          <option value="5k">5 km</option>
+          <option value="10k">10 km</option>
+          <option value="half">Half marathon (21.1 km)</option>
+          <option value="marathon">Marathon (42.2 km)</option>
+        </select>
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Finish time (h:mm)</label>
+        <input class="auth-input" id="wzBaselineTime" type="text" placeholder="e.g. 0:52 or 1:58" maxlength="7" oninput="updateBaselinePreview()">
+      </div>
+      <div id="wzBaselinePreview" style="margin-bottom:12px"></div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px">No recent result? <a onclick="wizardGoNext('wizScreen-baseline')" style="color:var(--accent);cursor:pointer">Skip this step →</a></p>
+      <button class="wizard-next" onclick="wizardGoNext('wizScreen-baseline')">Next →</button>
+    </div>
+
+    <!-- Step 4: Injuries -->
+    <div class="wizard-step" id="wizScreen-injuries">
       <h2>Any injuries or niggles?</h2>
       <p class="wizard-sub">Your warm-up, cool-down, and recovery sessions will be tailored. Select all that apply.</p>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
@@ -4043,26 +4199,19 @@ function downloadICS() {
         <label class="wizard-label">Details <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
         <textarea id="wzInjuryText" class="auth-input" rows="3" placeholder="e.g. left knee tendon, aggravated by downhill running…" style="resize:vertical;min-height:72px"></textarea>
       </div>
-      <button class="wizard-next" onclick="wizardNext(5)">Next →</button>
+      <button class="wizard-next" onclick="wizardGoNext('wizScreen-injuries')">Next →</button>
     </div>
 
-    <!-- Step 7: Sync method -->
-    <div class="wizard-step" id="wizStep6">
+    <!-- Step 5: Data connection -->
+    <div class="wizard-step" id="wizScreen-connect">
       <h2>How will you log workouts?</h2>
       <p class="wizard-sub">You can change this any time in your profile.</p>
       <div class="sync-options" id="syncOptions">
-        <div class="sync-opt selected" data-method="intervals_icu" onclick="selectSyncMethod(this)">
-          <div class="so-icon">⚡</div>
+        <div class="sync-opt selected" data-method="manual" onclick="selectSyncMethod(this)">
+          <div class="so-icon">✏️</div>
           <div>
-            <div class="so-title">Auto-sync via Intervals.icu</div>
-            <div class="so-desc">Connects Garmin or Apple Watch automatically. Best experience.</div>
-          </div>
-        </div>
-        <div class="sync-opt" data-method="file_upload" onclick="selectSyncMethod(this)">
-          <div class="so-icon">📁</div>
-          <div>
-            <div class="so-title">Upload FIT / TCX / GPX file</div>
-            <div class="so-desc">Export from Garmin Connect or other apps and drop the file in.</div>
+            <div class="so-title">Manual entry</div>
+            <div class="so-desc">Type in your splits and notes after each session. No app or watch needed.</div>
           </div>
         </div>
         <div class="sync-opt" data-method="screenshot" onclick="selectSyncMethod(this)">
@@ -4079,17 +4228,10 @@ function downloadICS() {
             <div class="so-desc">Pulls your run data directly after each workout. Best for Garmin users.</div>
           </div>
         </div>
-        <div class="sync-opt" data-method="manual" onclick="selectSyncMethod(this)">
-          <div class="so-icon">✏️</div>
-          <div>
-            <div class="so-title">Manual splits entry</div>
-            <div class="so-desc">Type in your splits after each session. No app or watch needed.</div>
-          </div>
-        </div>
       </div>
       <div id="garminFields" style="display:none;margin-top:14px">
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px;padding:10px 12px;background:#0f1117;border:1px solid var(--border);border-radius:8px;line-height:1.6">
-          🔒 Your password is encrypted before storage and never sent to third parties. It's only used to pull activity data from your own Garmin account.
+          🔒 Your password is encrypted before storage and never sent to third parties.
         </div>
         <div class="wizard-field">
           <label class="wizard-label">Garmin Connect email</label>
@@ -4098,16 +4240,6 @@ function downloadICS() {
         <div class="wizard-field">
           <label class="wizard-label">Garmin Connect password</label>
           <input class="auth-input" id="wzGarminPassword" type="password" placeholder="Garmin Connect password" autocomplete="new-password">
-        </div>
-      </div>
-      <div id="intervalsFields" style="margin-top:14px">
-        <div class="wizard-field">
-          <label class="wizard-label">Intervals.icu Athlete ID <span style="font-weight:400;color:var(--muted)">(Settings → General → Athlete ID)</span></label>
-          <input class="auth-input" id="wzIcuId" type="text" placeholder="e.g. i12345">
-        </div>
-        <div class="wizard-field">
-          <label class="wizard-label">Intervals.icu API Key <span style="font-weight:400;color:var(--muted)">(Settings → Developer)</span></label>
-          <input class="auth-input" id="wzIcuKey" type="password" placeholder="API key">
         </div>
       </div>
       <button class="wizard-next" id="startTrainingBtn" onclick="wizardFinish()">Build my plan →</button>
