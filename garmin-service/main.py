@@ -11,6 +11,7 @@ Required Railway env vars:
 IMPORTANT: deploy with a single gunicorn worker (see Procfile) — MFA state is in-process.
 """
 import os
+import time
 import logging
 import threading
 from datetime import datetime, timedelta
@@ -115,8 +116,12 @@ def start_garmin_login(user_id: str, email: str, password: str) -> Dict[str, Any
     mfa_event = threading.Event()
     result['event'] = mfa_event
 
-    def prompt_mfa() -> str:
+    # Two events: one signals "MFA code available", one signals "MFA was requested"
+    mfa_needed = threading.Event()   # set by prompt_mfa when Garmin requests a code
+
+    def prompt_mfa(*args) -> str:
         result['mfa_requested'] = True
+        mfa_needed.set()  # wake up the main thread immediately
         log.info('MFA required for %s — waiting for code', user_id)
         if not mfa_event.wait(timeout=300):
             raise Exception('MFA code not received within 5 minutes — please try again')
@@ -137,39 +142,31 @@ def start_garmin_login(user_id: str, email: str, password: str) -> Dict[str, Any
         except Exception as e:
             result['error'] = str(e)
             log.error('Garmin login failed for %s: %s', user_id, e)
+        finally:
+            mfa_needed.set()  # always wake main thread so it doesn't hang
 
     t = threading.Thread(target=do_login, daemon=True)
     result['thread'] = t
     _pending_mfa[user_id] = result
     t.start()
 
-    # Wait up to 25 s for login to finish OR for MFA to be triggered
-    t.join(timeout=25)
+    # Wait until either: login completes, MFA is triggered, or 60s timeout
+    mfa_needed.wait(timeout=60)
 
     if not t.is_alive():
-        del _pending_mfa[user_id]
+        _pending_mfa.pop(user_id, None)
         if result['error']:
             return {'status': 'error', 'error': result['error']}
         return {'status': 'connected', 'client': result['client']}
 
     if result['mfa_requested']:
-        # Thread is blocking, waiting for the MFA code
+        # Thread is alive and blocking — waiting for MFA code via /connect/mfa
+        log.info('Returning mfa_required for %s', user_id)
         return {'status': 'mfa_required'}
 
-    # Still running with no MFA request yet — give it more time
-    t.join(timeout=20)
-    if not t.is_alive():
-        del _pending_mfa[user_id]
-        if result['error']:
-            return {'status': 'error', 'error': result['error']}
-        return {'status': 'connected', 'client': result['client']}
-
-    if result['mfa_requested']:
-        return {'status': 'mfa_required'}
-
-    # Give up
-    del _pending_mfa[user_id]
-    return {'status': 'error', 'error': 'Garmin login timed out (45 s)'}
+    # Still running but no MFA requested and no result — timed out
+    _pending_mfa.pop(user_id, None)
+    return {'status': 'error', 'error': 'Garmin login timed out (60 s)'}
 
 
 def laps_from_splits(splits_response: dict) -> list:
@@ -193,7 +190,17 @@ def laps_from_splits(splits_response: dict) -> list:
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok'})
+    try:
+        import garminconnect as _gc
+        gc_ver = getattr(_gc, '__version__', 'unknown')
+    except Exception:
+        gc_ver = 'not installed'
+    try:
+        import garth as _g
+        g_ver = getattr(_g, '__version__', 'unknown')
+    except Exception:
+        g_ver = 'not installed'
+    return jsonify({'status': 'ok', 'garminconnect': gc_ver, 'garth': g_ver})
 
 
 @app.route('/connect', methods=['POST'])
