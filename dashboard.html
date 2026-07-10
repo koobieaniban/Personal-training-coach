@@ -354,6 +354,41 @@
   <div style="font-size:11px;color:var(--muted);text-align:center;padding:5px 16px 8px">6 AM reminders · all remaining sessions · iPhone ready</div>
 </div>
 
+<!-- Running Setup Modal -->
+<div class="auth-overlay hidden" id="runningSetupOverlay">
+  <div class="auth-box" style="max-width:400px">
+    <div style="font-size:28px;margin-bottom:6px;text-align:center">🏃</div>
+    <h2 style="font-size:18px;font-weight:800;margin-bottom:4px;text-align:center">Set up your running plan</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:18px;text-align:center">Tell us about your race so we can build your 80/20 training plan.</p>
+
+    <label style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Race distance</label>
+    <select id="rsDistance" style="width:100%;padding:11px;margin:6px 0 14px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:15px">
+      <option value="10k">10 km</option>
+      <option value="half">Half marathon (21.1 km)</option>
+      <option value="marathon">Marathon (42.2 km)</option>
+    </select>
+
+    <label style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Race date</label>
+    <input id="rsRaceDate" type="date" style="width:100%;padding:11px;margin:6px 0 14px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:15px">
+
+    <label style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Goal time (h:mm)</label>
+    <input id="rsGoalTime" type="text" placeholder="e.g. 0:55 or 1:45 or 3:30" maxlength="7"
+      style="width:100%;padding:11px;margin:6px 0 4px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:15px">
+    <div id="rsPacePreview" style="font-size:12px;color:var(--accent);margin-bottom:14px;min-height:16px"></div>
+
+    <label style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Plan start date</label>
+    <input id="rsPlanStart" type="date" style="width:100%;padding:11px;margin:6px 0 18px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:15px">
+
+    <button onclick="saveRunningSetup()" style="width:100%;padding:14px;background:var(--accent);color:#000;font-weight:800;font-size:15px;border:none;border-radius:10px;cursor:pointer;margin-bottom:8px" id="rsSubmitBtn">
+      Build my running plan →
+    </button>
+    <button onclick="cancelRunningSetup()" style="width:100%;padding:10px;background:transparent;color:var(--muted);font-size:13px;border:none;cursor:pointer">
+      Cancel
+    </button>
+    <p id="rsError" style="font-size:12px;color:var(--skipped);margin-top:8px;text-align:center;display:none"></p>
+  </div>
+</div>
+
 <!-- MFA Modal -->
 <div class="auth-overlay hidden" id="mfaOverlay">
   <div class="auth-box" style="text-align:center">
@@ -1445,7 +1480,8 @@ function showProfileMenu() {
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px">${currentUser?.email || ''}</div>
     <div style="font-size:12px;color:var(--muted)">Sync method</div>
     <div style="font-size:13px;font-weight:600;margin-bottom:14px">${syncLabel[userProfile?.sync_method] || 'Manual entry'}</div>
-    <button class="auth-btn" style="background:var(--card2);color:var(--text);border:1px solid var(--border);margin-bottom:0;font-size:13px" onclick="document.getElementById('profileMenu').classList.add('hidden');showWizard()">⚙ Update profile &amp; sync method</button>
+    <button class="auth-btn" style="background:var(--card2);color:var(--text);border:1px solid var(--border);margin-bottom:8px;font-size:13px" onclick="document.getElementById('profileMenu').classList.add('hidden');showWizard()">⚙ Update Hyrox profile &amp; sync</button>
+    <button class="auth-btn" style="background:var(--card2);color:var(--text);border:1px solid var(--border);margin-bottom:0;font-size:13px" onclick="document.getElementById('profileMenu').classList.add('hidden');showRunningSetup()">🏃 Edit running goals</button>
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <button style="width:100%;background:transparent;border:1px solid #2a0f0f;color:var(--skipped);border-radius:8px;padding:9px;font-size:12px;cursor:pointer" onclick="confirmDeleteData()">🗑 Delete my data</button>
     </div>`;
@@ -1970,10 +2006,115 @@ async function syncFromGarmin(dateStr) {
   }
 }
 
+// ── Running setup modal ───────────────────────────────────────────────────────
+
+function parseGoalTime(str) {
+  // Accepts h:mm, hh:mm, mm:ss — always treats as h:mm for running
+  const parts = str.trim().split(':').map(Number);
+  if (parts.length !== 2 || parts.some(isNaN)) return null;
+  return parts[0] * 3600 + parts[1] * 60;
+}
+
+function fmtPace(secPerKm) {
+  const m = Math.floor(secPerKm / 60);
+  const s = Math.round(secPerKm % 60);
+  return `${m}:${String(s).padStart(2,'0')} /km`;
+}
+
+function showRunningSetup() {
+  const overlay = document.getElementById('runningSetupOverlay');
+  const p       = userProfile || {};
+
+  // Pre-fill from existing profile
+  document.getElementById('rsDistance').value  = p.race_distance || '10k';
+  document.getElementById('rsRaceDate').value  = p.running_race_date || '';
+  document.getElementById('rsPlanStart').value = p.running_plan_start || '';
+  document.getElementById('rsGoalTime').value  = p.goal_time_sec
+    ? `${Math.floor(p.goal_time_sec/3600)}:${String(Math.floor((p.goal_time_sec%3600)/60)).padStart(2,'0')}`
+    : '';
+  document.getElementById('rsError').style.display = 'none';
+  document.getElementById('rsSubmitBtn').disabled = false;
+  document.getElementById('rsSubmitBtn').textContent = 'Build my running plan →';
+  updateRsPacePreview();
+
+  overlay.classList.remove('hidden');
+
+  document.getElementById('rsGoalTime').oninput = updateRsPacePreview;
+  document.getElementById('rsDistance').onchange = updateRsPacePreview;
+}
+
+function updateRsPacePreview() {
+  const el   = document.getElementById('rsPacePreview');
+  const sec  = parseGoalTime(document.getElementById('rsGoalTime').value);
+  const dist = RACE_DIST_KM[document.getElementById('rsDistance').value] || 10;
+  if (!sec) { el.textContent = ''; return; }
+  const targets = computeRunningPaceTargets(sec, dist);
+  el.textContent = `Easy ${fmtPace(targets.easy)} · Tempo ${fmtPace(targets.tempo)} · Race ${fmtPace(targets.race)}`;
+}
+
+async function saveRunningSetup() {
+  const dist      = document.getElementById('rsDistance').value;
+  const raceDate  = document.getElementById('rsRaceDate').value;
+  const planStart = document.getElementById('rsPlanStart').value;
+  const goalStr   = document.getElementById('rsGoalTime').value;
+  const errEl     = document.getElementById('rsError');
+  const btn       = document.getElementById('rsSubmitBtn');
+
+  if (!raceDate) { errEl.textContent = 'Please pick a race date.'; errEl.style.display = 'block'; return; }
+  const goalSec = parseGoalTime(goalStr);
+  if (!goalSec) { errEl.textContent = 'Goal time must be like 0:55 or 1:45 or 3:30.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const updates = {
+    race_distance:       dist,
+    running_race_date:   raceDate,
+    running_plan_start:  planStart || null,
+    goal_time_sec:       goalSec,
+    active_plan:         'running',
+  };
+
+  if (currentUser && sb) {
+    const { error } = await sb.from('profiles').update(updates).eq('id', currentUser.id);
+    if (error) {
+      errEl.textContent = 'Save failed: ' + error.message;
+      errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Build my running plan →';
+      return;
+    }
+  }
+
+  Object.assign(userProfile, updates);
+
+  // Swap state to running
+  state._hyroxCompletions = state.completions;
+  state._hyroxPaceAdj     = state.paceAdj;
+  state.completions = state._runningCompletions || {};
+  state.paceAdj     = state._runningPaceAdj    || {};
+  userProfile.active_plan = 'running';
+
+  buildRunningSessionMap(userProfile);
+  document.getElementById('runningSetupOverlay').classList.add('hidden');
+  saveLocalState(state);
+  recomputeAllPaceAdj();
+  renderPlanSwitcher();
+  render();
+}
+
+function cancelRunningSetup() {
+  document.getElementById('runningSetupOverlay').classList.add('hidden');
+}
+
 // ── Plan switcher ─────────────────────────────────────────────────────────────
 
 async function switchPlan(planType) {
   if (userProfile?.active_plan === planType) return;
+
+  // If switching to running and no running profile yet, show setup wizard
+  if (planType === 'running' && !userProfile?.running_race_date) {
+    showRunningSetup();
+    return;
+  }
 
   const current = userProfile?.active_plan || 'hyrox';
 
