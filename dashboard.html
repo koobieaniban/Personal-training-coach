@@ -420,19 +420,96 @@ const RACE_DIST_KM = { '10k': 10, 'half': 21.0975, 'marathon': 42.195 };
 const PLAN_WEEKS_FOR_DIST = { '10k': 12, 'half': 16, 'marathon': 20 };
 
 function computeLTHR(age) {
-  if (!age) return 155;
+  if (!age || age < 10) return null;
   return Math.round(0.87 * (208 - 0.7 * age));
 }
 
 function computeHRZones(lthr) {
+  if (!lthr) return null;
   return {
-    z1: [0,                        Math.round(lthr * 0.80)],
-    z2: [Math.round(lthr * 0.81),  Math.round(lthr * 0.89)],
-    z3: [Math.round(lthr * 0.90),  Math.round(lthr * 0.93)],
-    z4: [Math.round(lthr * 0.94),  Math.round(lthr * 0.99)],
-    z5: [Math.round(lthr),         999],
+    z1: { min: 0,                       max: Math.round(0.84 * lthr) },
+    z2: { min: Math.round(0.85 * lthr), max: Math.round(0.89 * lthr) },
+    z3: { min: Math.round(0.90 * lthr), max: Math.round(0.94 * lthr) },
+    z4: { min: Math.round(0.95 * lthr), max: Math.round(0.99 * lthr) },
+    z5: { min: lthr,                    max: 999 },
   };
 }
+
+function mmssToSec(mmss) {
+  if (!mmss) return 0;
+  const [m, s] = String(mmss).split(':').map(Number);
+  return (m || 0) * 60 + (s || 0);
+}
+
+function runSessionDistKm(subtype, phase, raceDist) {
+  // raceDist = RACE_DIST_KM value: 10, 21.0975, 42.195
+  const key = raceDist <= 10 ? '10k' : raceDist <= 21.5 ? 'half' : 'marathon';
+  const TABLE = {
+    //           [base, build, peak, taper]
+    easy:     { '10k': [6,8,8,5],     half: [8,10,10,6],    marathon: [10,12,12,8]  },
+    tempo:    { '10k': [5,7,8,4],     half: [7,9,10,5],     marathon: [9,11,12,7]   },
+    interval: { '10k': [4,6,7,4],     half: [6,8,9,5],      marathon: [7,9,10,6]    },
+    long:     { '10k': [12,16,18,10], half: [14,18,22,12],  marathon: [18,24,30,16] },
+    race:     { '10k': [10,10,10,10], half: [21,21,21,21],  marathon: [42,42,42,42] },
+    strength: { '10k': [0,0,0,0],     half: [0,0,0,0],      marathon: [0,0,0,0]     },
+    shakeout: { '10k': [4,4,4,4],     half: [5,5,5,5],      marathon: [6,6,6,6]     },
+  };
+  const phaseIdx = { base:0, build:1, peak:2, taper:3 }[phase] ?? 0;
+  const row = TABLE[subtype]?.[key] || TABLE.easy[key];
+  return row[phaseIdx];
+}
+
+const RUN_WARMUPS = {
+  easy: [
+    'Leg swings front/back — 10 reps each leg',
+    'Hip circles — 10 each direction',
+    'Ankle rotations — 10 each',
+    'High knees — 20 m easy',
+    '2 min easy walk, then ease into your pace',
+  ],
+  tempo: [
+    'Leg swings front/back + lateral — 10 each',
+    'Dynamic lunge with hip flexor stretch — 8 each leg',
+    'High knees — 20 m',
+    'Butt kicks — 20 m',
+    'A-skips — 20 m',
+    '2 × 60 m strides building to tempo pace',
+  ],
+  interval: [
+    'Leg swings front/back + lateral — 10 each',
+    'High knees — 20 m',
+    'Butt kicks — 20 m',
+    'A-skips + B-skips — 20 m each',
+    'Lateral bounds — 8 each side',
+    '3 × 80 m strides, last one at interval pace',
+    '3 min easy jog before first rep',
+  ],
+  long: [
+    'Gentle leg swings — 10 each direction',
+    'Hip circles — 10 each direction',
+    'Calf raises — 15 reps',
+    'Ankle rotations — 10 each',
+    'Run first 10–15 min at very easy pace — this IS the warmup',
+  ],
+  race: [
+    'Leg swings + hip circles — 10 each direction',
+    'High knees + butt kicks — 20 m each',
+    'A-skips — 20 m',
+    '3 × 100 m strides building to race pace',
+    '5–10 min easy jog 30 min before gun',
+  ],
+  strength: [
+    'Hip circles — 10 each direction',
+    'Bodyweight squats — 10 slow reps',
+    'Leg swings — 10 each direction',
+    'Glute bridges — 10 slow reps',
+  ],
+  shakeout: [
+    'Gentle leg swings — 10 each',
+    'Hip circles — 10 each',
+    '2 min very easy walk then jog',
+  ],
+};
 
 function computeRunningPaceTargets(goalTimeSec, distanceKm) {
   if (!goalTimeSec || !distanceKm) return null;
@@ -495,7 +572,7 @@ function buildRunningSessionMap(profile) {
 
     const weekSessions = isRaceWk
       ? raceWeekSessions(dist, goalTimeSec)
-      : phaseSessions(phase, w + 1, dist);
+      : phaseSessions(phase, w + 1, distKm, trainingDays.length);
 
     // Find this week's training dates
     const weekStart = new Date(planStart.getTime() + w * 7 * 86400000);
@@ -515,26 +592,63 @@ function buildRunningSessionMap(profile) {
   return map;
 }
 
-function phaseSessions(phase, weekNum, dist) {
+function phaseSessions(phase, weekNum, dist, numDays) {
+  numDays = numDays || 3;
+  const distKm = dist || 10;
   const longDur = { base: 55, build: 70, peak: 85, taper: 40 };
   const dur     = longDur[phase] || 55;
-  const qualityType = phase === 'peak' ? 'interval' : 'tempo';
+  const qualityType  = phase === 'peak' ? 'interval' : 'tempo';
   const qualityTitle = phase === 'peak' ? 'Interval Run' : 'Tempo Run';
   const qualityZone  = phase === 'peak' ? 'Z4–5' : 'Z4';
-  const qualityPace  = phase === 'peak' ? 'intervals' : 'tempo';
+  const qualityPace  = phase === 'peak' ? 'interval' : 'tempo';
 
-  return [
-    { type:'run', subtype:'easy',    title:'Easy Run',       subtitle:`30–40 min conversational pace · Z2`,         icon:'🏃', paceRef:'easy',    rest:false },
-    { type:'run', subtype:qualityType, title:qualityTitle,   subtitle:`${phase==='peak'?'6×1km efforts':'25 min'} · ${qualityZone} · quality work`, icon:'⚡', paceRef:qualityPace, rest:false },
-    { type:'run', subtype:'long',    title:'Long Run',        subtitle:`${dur} min easy · Z2 · aerobic base`,        icon:'🛤️', paceRef:'long',    rest:false },
-  ];
+  const d = (subtype) => runSessionDistKm(subtype, phase, distKm);
+
+  const easy = { type:'run', subtype:'easy', title:'Easy Run',
+    subtitle:`${d('easy')} km · conversational pace · Z2`,
+    icon:'🏃', paceRef:'easy', rest:false, warmup: RUN_WARMUPS.easy, distKm: d('easy') };
+
+  const quality = { type:'run', subtype:qualityType, title:qualityTitle,
+    subtitle:`${d(qualityType)} km · ${qualityZone} · quality work`,
+    icon:'⚡', paceRef:qualityPace, rest:false, warmup: RUN_WARMUPS[qualityType] || RUN_WARMUPS.tempo, distKm: d(qualityType) };
+
+  const longRun = { type:'run', subtype:'long', title:'Long Run',
+    subtitle:`${d('long')} km · easy · Z2 · aerobic base`,
+    icon:'🛤️', paceRef:'long', rest:false, warmup: RUN_WARMUPS.long, distKm: d('long') };
+
+  const strength = { type:'run', subtype:'strength', title:'Running Strength',
+    subtitle:'Single-leg stability, hip strength, and core — 30–40 min',
+    icon:'💪', paceRef:null, rest:false, warmup: RUN_WARMUPS.strength,
+    strengthBlocks: [
+      { title: 'Single-leg stability', items: ['Bulgarian split squats 3×10 each leg', 'Single-leg RDL 3×8 each leg', 'Step-ups 3×10 each leg'] },
+      { title: 'Hip strength', items: ['Lateral band walks 2×15 each direction', 'Clamshells 2×20 each side', 'Hip thrusts 3×12'] },
+      { title: 'Core', items: ['Dead bugs 3×8 each side', 'Pallof press 3×10 each side', 'Plank hold 3×30–45 s'] },
+    ]
+  };
+
+  const recovery = { type:'run', subtype:'easy', title:'Recovery Run',
+    subtitle:`${Math.round(d('easy') * 0.7)} km · very easy · Z1–Z2 · flush the legs`,
+    icon:'🏃', paceRef:'easy', rest:false, warmup: RUN_WARMUPS.easy,
+    distKm: Math.round(d('easy') * 0.7) };
+
+  if (numDays <= 3) return [easy, quality, longRun];
+  if (numDays === 4) return [easy, quality, strength, longRun];
+  if (numDays === 5) return [easy, quality, strength, recovery, longRun];
+  return [easy, recovery, quality, strength, recovery, longRun].slice(0, numDays);
 }
 
 function raceWeekSessions(dist, goalTimeSec) {
+  const distKm = dist ? (RACE_DIST_KM[dist] || 10) : 10;
   const goalStr = goalTimeSec ? secToMMSS(goalTimeSec) : 'your goal time';
   return [
-    { type:'run', subtype:'easy',    title:'Easy Shakeout',  subtitle:'20 min very easy · loosen the legs',         icon:'🏃', paceRef:'easy',    rest:false },
-    { type:'run', subtype:'race',    title:`${dist.toUpperCase()} Race Day`, subtitle:`Goal: ${goalStr} · trust the training`, icon:'🏁', paceRef:'race',   rest:false },
+    { type:'run', subtype:'shakeout', title:'Easy Shakeout',
+      subtitle:`${runSessionDistKm('shakeout','taper',distKm)} km · very easy · loosen the legs`,
+      icon:'🏃', paceRef:'easy', rest:false, warmup: RUN_WARMUPS.shakeout,
+      distKm: runSessionDistKm('shakeout','taper',distKm) },
+    { type:'run', subtype:'race', title:`${(dist||'race').toUpperCase()} Race Day`,
+      subtitle:`Goal: ${goalStr} · trust the training`,
+      icon:'🏁', paceRef:'race', rest:false, warmup: RUN_WARMUPS.race,
+      distKm: runSessionDistKm('race','peak',distKm) },
   ];
 }
 
@@ -1496,6 +1610,8 @@ function showWizard() {
 
   // Pre-fill name
   document.getElementById('wzName').value = userProfile?.name || '';
+  const ageEl = document.getElementById('wzAge');
+  if (ageEl) ageEl.value = userProfile?.age || '';
 
   // Pre-fill race type
   selectRaceType(wizardRaceType, false);
@@ -1805,7 +1921,8 @@ async function wizardFinish() {
     return tags.length ? (text ? `${tags.join(', ')}: ${text}` : tags.join(', ')) : (text || null);
   })();
 
-  let profile = { id: currentUser.id, name, injuries, sync_method: wizardSyncMethod, sessions_per_week: wizardFreq, training_days: sortedDays, updated_at: new Date().toISOString() };
+  const age = parseInt(document.getElementById('wzAge')?.value) || null;
+  let profile = { id: currentUser.id, name, age, injuries, sync_method: wizardSyncMethod, sessions_per_week: wizardFreq, training_days: sortedDays, updated_at: new Date().toISOString() };
 
   if (wizardRaceType === 'hyrox') {
     Object.assign(profile, {
@@ -2454,51 +2571,103 @@ function getVolumeNudge(week) {
 // ── Pace adjustment engine ────────────────────────────────────────────────────
 
 function recomputePaceAdj(week) {
-  const weekFeedback = Object.entries(state.feedback)
-    .filter(([k]) => {
-      const s = SESSIONS[k];
-      return s && s.week === week && s.type === 'run';
-    })
-    .map(([, v]) => v.pace_feel)
-    .filter(v => v !== null && v !== undefined);
-
-  if (weekFeedback.length < 2) return;
-  const avg = weekFeedback.reduce((a, b) => a + b, 0) / weekFeedback.length;
-  // avg < -0.5 = consistently easier → adjust paces 5s faster
-  // avg > 0.5  = consistently harder  → adjust paces 5–10s slower
-  let adj = 0;
-  if (avg < -1.0)      adj = -10;
-  else if (avg < -0.5) adj = -5;
-  else if (avg > 1.0)  adj =  15;
-  else if (avg > 0.5)  adj =  10;
-  state.paceAdj[week] = adj;
-  saveState(state);
+  recomputeAllPaceAdj();
 }
 
 function recomputeAllPaceAdj() {
-  // Derive paceAdj for every week from feedback — makes it device-agnostic.
-  // Called on login after feedback is merged, so any device always sees correct values.
+  const lthr = computeLTHR(userProfile?.age);
+  const zones = lthr ? computeHRZones(lthr) : null;
+
+  function paceSignalForDate(dateStr) {
+    const session = SESSIONS[dateStr];
+    if (!session || session.rest || session.type !== 'run' || !session.paceRef) return null;
+
+    const fb = state.feedback[dateStr];
+    const wd = state.workoutData?.[dateStr];
+    const paceFeel = fb?.pace_feel;  // -2 to +2, null if no feedback
+
+    let objPaceSignal = null;  // 'faster' | 'on_target' | 'slower'
+    let objHRSignal   = null;  // 'in_zone' | 'above_zone' | null
+
+    // ── Garmin pace signal ──────────────────────────────────────────────────
+    if (wd?.avgPaceSec) {
+      const week = session.week || getWeekNum(dateStr);
+      const targetStr = PACE_TARGETS[week]?.[session.paceRef];
+      if (targetStr) {
+        const targetSec = mmssToSec(targetStr);
+        const actualSec = wd.avgPaceSec;
+        const diffPct   = (actualSec - targetSec) / targetSec;
+        if (diffPct < -0.04)      objPaceSignal = 'faster';   // >4% faster
+        else if (diffPct > 0.04)  objPaceSignal = 'slower';   // >4% slower
+        else                      objPaceSignal = 'on_target';
+      }
+    }
+
+    // ── Garmin HR signal ────────────────────────────────────────────────────
+    if (zones && wd?.avgHR) {
+      const targetZone = { easy:'z2', long:'z2', tempo:'z4', interval:'z4', race:'z5' }[session.paceRef];
+      if (targetZone) {
+        const z = zones[targetZone];
+        objHRSignal = wd.avgHR <= z.max ? 'in_zone' : 'above_zone';
+      }
+    }
+
+    // ── Decision matrix ─────────────────────────────────────────────────────
+    // Conservative rule: conflicting signals → hold (return 0)
+    if (objPaceSignal && objHRSignal) {
+      if (objHRSignal === 'above_zone')                               return  10; // HR override — back off
+      if (objPaceSignal === 'faster' && paceFeel <= -1)              return -10; // both say easy → push
+      if (objPaceSignal === 'faster' && paceFeel === 0)              return  -5; // pacing well
+      if (objPaceSignal === 'faster' && (paceFeel === null || paceFeel > 0)) return 0; // conflict → hold
+      if (objPaceSignal === 'on_target' && paceFeel <= -1)           return  -5;
+      if (objPaceSignal === 'on_target')                             return   0;
+      if (objPaceSignal === 'slower'   && paceFeel >= 1)             return  10;
+      if (objPaceSignal === 'slower')                                return   5;
+    }
+
+    // Only Garmin pace (no HR data)
+    if (objPaceSignal && !objHRSignal) {
+      if (objPaceSignal === 'faster' && paceFeel <= -1) return -8;
+      if (objPaceSignal === 'faster')                   return -4;
+      if (objPaceSignal === 'on_target' && paceFeel <= -1) return -4;
+      if (objPaceSignal === 'on_target')                return  0;
+      if (objPaceSignal === 'slower' && paceFeel >= 1)  return 10;
+      if (objPaceSignal === 'slower')                   return  5;
+    }
+
+    // Only subjective feedback (no Garmin data)
+    if (paceFeel !== null && paceFeel !== undefined) {
+      if (paceFeel <= -2) return -8;
+      if (paceFeel === -1) return -4;
+      if (paceFeel === 0)  return  0;
+      if (paceFeel === 1)  return  8;
+      if (paceFeel >= 2)  return 15;
+    }
+
+    return null; // no data
+  }
+
   let changed = false;
   for (let w = 1; w <= totalPlanWeeks(); w++) {
-    const runFeedback = Object.entries(state.feedback)
-      .filter(([k]) => {
-        const s = SESSIONS[k];
-        return s && s.week === w && s.type === 'run';
-      })
-      .map(([, v]) => v.pace_feel)
-      .filter(v => v !== null && v !== undefined);
-    if (runFeedback.length < 2) {
-      // Not enough feedback — remove any stale value so effectivePaceAdj
-      // walks back to the previous week's adjustment correctly.
+    const weekDates = Object.keys(SESSIONS).filter(d => SESSIONS[d]?.week === w && SESSIONS[d]?.type === 'run');
+    const signals   = weekDates.map(d => paceSignalForDate(d)).filter(s => s !== null);
+
+    if (signals.length === 0) {
       if (state.paceAdj[w] !== undefined) { delete state.paceAdj[w]; changed = true; }
       continue;
     }
-    const avg = runFeedback.reduce((a, b) => a + b, 0) / runFeedback.length;
-    let adj = 0;
-    if (avg < -1.0)      adj = -10;
-    else if (avg < -0.5) adj = -5;
-    else if (avg > 1.0)  adj =  15;
-    else if (avg > 0.5)  adj =  10;
+
+    // Conservative aggregation: any positive signal (back off) takes precedence
+    let adj;
+    const maxSignal = Math.max(...signals);
+    const minSignal = Math.min(...signals);
+    if (maxSignal >= 10)        adj = maxSignal;       // at least one back-off
+    else if (minSignal <= -8)   adj = Math.round(signals.reduce((a,b)=>a+b,0) / signals.length); // all pushing
+    else                        adj = Math.round(signals.reduce((a,b)=>a+b,0) / signals.length);
+
+    // Clamp: max 20 sec slower, max 15 sec faster per week
+    adj = Math.max(-15, Math.min(20, adj));
+
     if (state.paceAdj[w] !== adj) { state.paceAdj[w] = adj; changed = true; }
   }
   if (changed) saveState(state);
@@ -2747,17 +2916,70 @@ function renderSession() {
 
   // Running session — render with pace targets instead of blocks
   if (session.type === 'run') {
-    const paceT = PACE_TARGETS[week] || PACE_TARGETS[1] || {};
-    const paceRef = session.paceRef || 'easy';
-    const targetPace = paceT[paceRef] || paceT.easy || '–';
-    const zoneLabel = { easy:'Zone 2 · conversational', tempo:'Zone 4 · comfortably hard', interval:'Zone 4–5 · race effort', long:'Zone 2 · aerobic base', race:'Race effort · everything you have' };
-    const zone = zoneLabel[paceRef] || '';
+    // Strength day — no pace, show workout blocks
+    if (session.subtype === 'strength') {
+      const warmupHtml = session.warmup ? `
+        <div class="block">
+          <div class="block-title">Warmup · 5 min</div>
+          ${session.warmup.map(i => `<div class="block-item">${i}</div>`).join('')}
+        </div>` : '';
+      const strengthHtml = (session.strengthBlocks || []).map(b => `
+        <div class="block">
+          <div class="block-title">${b.title}</div>
+          ${b.items.map(i => `<div class="block-item">${i}</div>`).join('')}
+        </div>`).join('');
+      area.innerHTML = `
+        <div class="session-card">
+          <div class="session-header">
+            <div class="session-type-badge type-run">${session.icon}</div>
+            <div class="session-title">
+              <h2>${session.title}</h2>
+              <div class="session-subtitle">${session.subtitle || ''}</div>
+            </div>
+            <div class="status-badge status-${statusCls}">${statusLabel}</div>
+          </div>
+          <div class="session-body">
+            ${noteHtml}${warmupHtml}${strengthHtml}
+          </div>
+          ${actionHtml}
+        </div>`;
+      renderStats();
+      return;
+    }
+
+    // Running session — show pace + dist + warmup
+    const paceRef     = session.paceRef || 'easy';
+    const targetPace  = adjustedPace(week, paceRef);  // applies paceAdj
+    const easyPace    = adjustedPace(week, 'easy');
+    const tempoPace   = adjustedPace(week, 'tempo');
+    const intervalPace= adjustedPace(week, 'interval') !== '–' ? adjustedPace(week, 'interval') : adjustedPace(week, 'intervals');
+    const longPace    = adjustedPace(week, 'long');
+    const racePace    = adjustedPace(week, 'race');
+    const zoneLabel   = { easy:'Zone 2 · conversational', tempo:'Zone 4 · comfortably hard', interval:'Zone 4–5 · race effort', long:'Zone 2 · aerobic base', race:'Race effort · trust your training', shakeout:'Zone 1–2 · very easy' };
+    const zone        = zoneLabel[paceRef] || '';
+    const distKm      = session.distKm;
+
     const nudge = getVolumeNudge(week);
     const nudgeHtml = nudge === 'strong'
       ? `<div class="volume-nudge">💪 <strong>Feeling easy?</strong> Consider extending today's run by 5–10 min or adding a final interval.</div>`
       : nudge === 'mild'
       ? `<div class="volume-nudge">📈 <strong>Pace feeling manageable?</strong> If legs feel good, push the last portion 5s/km faster than target.</div>`
       : '';
+
+    const warmupHtml = session.warmup ? `
+      <div class="block">
+        <div class="block-title">Warmup · 5–10 min</div>
+        ${session.warmup.map(i => `<div class="block-item">${i}</div>`).join('')}
+      </div>` : '';
+
+    const paceGuideRows = [
+      easyPace     !== '–' ? `<div class="block-item">Easy (Z2): <strong>${easyPace}</strong> /km</div>` : '',
+      tempoPace    !== '–' ? `<div class="block-item">Tempo (Z4): <strong>${tempoPace}</strong> /km</div>` : '',
+      intervalPace !== '–' ? `<div class="block-item">Intervals (Z4–5): <strong>${intervalPace}</strong> /km</div>` : '',
+      longPace     !== '–' ? `<div class="block-item">Long run (Z2): <strong>${longPace}</strong> /km</div>` : '',
+      racePace     !== '–' ? `<div class="block-item">Race pace: <strong>${racePace}</strong> /km</div>` : '',
+    ].filter(Boolean).join('');
+
     area.innerHTML = nudgeHtml + `
       <div class="session-card">
         <div class="session-header">
@@ -2771,18 +2993,12 @@ function renderSession() {
         <div class="session-body">
           ${noteHtml}
           <div class="block">
-            <div class="block-title">Target pace</div>
-            <div class="block-item" style="font-size:22px;font-weight:800;color:var(--accent);letter-spacing:.02em">${targetPace} /km</div>
+            <div class="block-title">Target</div>
+            ${distKm ? `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${distKm} km · ${targetPace} /km</div>` : `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${targetPace} /km</div>`}
             <div class="block-item" style="color:var(--muted)">${zone}</div>
           </div>
-          ${paceT.easy ? `<div class="block">
-            <div class="block-title">Week ${week} pace guide</div>
-            <div class="block-item">Easy (Z2): ${paceT.easy} /km</div>
-            ${paceT.tempo ? `<div class="block-item">Tempo (Z4): ${paceT.tempo} /km</div>` : ''}
-            ${paceT.intervals ? `<div class="block-item">Intervals (Z4–5): ${paceT.intervals} /km</div>` : ''}
-            ${paceT.long ? `<div class="block-item">Long run (Z2): ${paceT.long} /km</div>` : ''}
-            ${paceT.race ? `<div class="block-item">Race pace: ${paceT.race} /km</div>` : ''}
-          </div>` : ''}
+          ${warmupHtml}
+          ${paceGuideRows ? `<div class="block"><div class="block-title">Week ${week} pace guide</div>${paceGuideRows}</div>` : ''}
         </div>
         ${actionHtml}
       </div>`;
@@ -3990,6 +4206,10 @@ function downloadICS() {
       <div class="wizard-field">
         <label class="wizard-label">Your name</label>
         <input class="auth-input" id="wzName" type="text" placeholder="Your name">
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Age <span style="font-weight:400;color:var(--muted)">(optional — used to calculate heart rate zones)</span></label>
+        <input class="auth-input" id="wzAge" type="number" placeholder="e.g. 32" min="16" max="80">
       </div>
       <p id="wzErr-name" style="font-size:12px;color:var(--skipped);display:none;margin-top:-8px;margin-bottom:8px"></p>
       <button class="wizard-next" onclick="wizardGoNext('wizScreen-name')">Next →</button>
