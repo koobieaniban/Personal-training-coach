@@ -56,12 +56,33 @@ def decrypt(token: str) -> str:
     return fernet.decrypt(token.encode()).decode()
 
 
+def dump_session(client: Garmin) -> Optional[str]:
+    """Try to export garth session tokens — returns None if not available."""
+    for attr in ('garth',):
+        obj = getattr(client, attr, None)
+        if obj and hasattr(obj, 'dumps'):
+            try:
+                return obj.dumps()
+            except Exception:
+                pass
+    # garth may be a module-level singleton in newer versions
+    try:
+        import garth as _garth
+        if hasattr(_garth, 'client') and hasattr(_garth.client, 'dumps'):
+            return _garth.client.dumps()
+    except Exception:
+        pass
+    return None
+
+
 def save_credentials(user_id: str, email: str, password: str, client: Optional[Garmin] = None):
     enc_password = encrypt(password)
     enc_tokens   = None
     try:
-        if client and hasattr(client, 'garth') and hasattr(client.garth, 'dumps'):
-            enc_tokens = encrypt(client.garth.dumps())
+        if client:
+            raw = dump_session(client)
+            if raw:
+                enc_tokens = encrypt(raw)
     except Exception:
         pass
 
@@ -103,8 +124,14 @@ def start_garmin_login(user_id: str, email: str, password: str) -> Dict[str, Any
 
     def do_login():
         try:
-            client = Garmin()
-            client.garth.login(email, password, prompt_mfa=prompt_mfa)
+            # New API (garminconnect ≥ 0.2.22): credentials + prompt_mfa in constructor
+            try:
+                client = Garmin(email=email, password=password, prompt_mfa=prompt_mfa)
+                client.login()
+            except TypeError:
+                # Older API: pass prompt_mfa via garth
+                client = Garmin()
+                client.garth.login(email, password, prompt_mfa=prompt_mfa)
             result['client'] = client
             log.info('Garmin login completed for %s', user_id)
         except Exception as e:
@@ -282,8 +309,12 @@ def sync():
 
     try:
         password = decrypt(enc_pass)
-        client   = Garmin()
-        client.garth.login(email, password)
+        try:
+            client = Garmin(email=email, password=password)
+            client.login()
+        except TypeError:
+            client = Garmin()
+            client.garth.login(email, password)
     except Exception as e:
         return jsonify({'error': f'Garmin authentication failed: {e}'}), 500
 
