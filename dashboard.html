@@ -600,7 +600,7 @@ function phaseSessions(phase, weekNum, dist, numDays) {
   const qualityType  = phase === 'peak' ? 'interval' : 'tempo';
   const qualityTitle = phase === 'peak' ? 'Interval Run' : 'Tempo Run';
   const qualityZone  = phase === 'peak' ? 'Z4–5' : 'Z4';
-  const qualityPace  = phase === 'peak' ? 'interval' : 'tempo';
+  const qualityPace  = phase === 'peak' ? 'intervals' : 'tempo';
 
   const d = (subtype) => runSessionDistKm(subtype, phase, distKm);
 
@@ -618,7 +618,7 @@ function phaseSessions(phase, weekNum, dist, numDays) {
 
   const strength = { type:'run', subtype:'strength', title:'Running Strength',
     subtitle:'Single-leg stability, hip strength, and core — 30–40 min',
-    icon:'💪', paceRef:null, rest:false, warmup: RUN_WARMUPS.strength,
+    icon:'💪', paceRef:null, rest:false, warmup: RUN_WARMUPS.strength, distKm: 0,
     strengthBlocks: [
       { title: 'Single-leg stability', items: ['Bulgarian split squats 3×10 each leg', 'Single-leg RDL 3×8 each leg', 'Step-ups 3×10 each leg'] },
       { title: 'Hip strength', items: ['Lateral band walks 2×15 each direction', 'Clamshells 2×20 each side', 'Hip thrusts 3×12'] },
@@ -2920,7 +2920,7 @@ function renderSession() {
     if (session.subtype === 'strength') {
       const warmupHtml = session.warmup ? `
         <div class="block">
-          <div class="block-title">Warmup · 5 min</div>
+          <div class="block-title">Warmup · 5–10 min</div>
           ${session.warmup.map(i => `<div class="block-item">${i}</div>`).join('')}
         </div>` : '';
       const strengthHtml = (session.strengthBlocks || []).map(b => `
