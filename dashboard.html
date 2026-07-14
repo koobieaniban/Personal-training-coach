@@ -372,10 +372,20 @@
 function _isoDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-const DEFAULT_PLAN_START_STR = _isoDate(new Date());
+// Snap any date back to the Sunday of its week, so every plan runs
+// Sunday→Saturday. The Hyrox template is authored for a Sunday start
+// (offset 0 = Sunday prep day, offset 1 = Monday run), and the running
+// plan's weekday assignment lines up cleanly inside a Sun–Sat window.
+function snapToSunday(date) {
+  const d = new Date(date.getTime());
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay()); // getDay(): 0 = Sunday
+  return d;
+}
+const DEFAULT_PLAN_START_STR = _isoDate(snapToSunday(new Date()));
 const DEFAULT_RACE_DATE_STR  = (() => { const d = new Date(); d.setDate(d.getDate() + 56); return _isoDate(d); })();
 let RACE_DATE  = new Date(DEFAULT_RACE_DATE_STR  + 'T00:00:00');
-let PLAN_START = new Date(DEFAULT_PLAN_START_STR + 'T00:00:00');
+let PLAN_START = snapToSunday(new Date(DEFAULT_PLAN_START_STR + 'T00:00:00'));
 
 // Total plan weeks derived from actual dates (used for "Week X of N" and strip cap)
 function totalPlanWeeks() {
@@ -526,7 +536,7 @@ function buildRunningSessionMap(profile) {
   const paceTargets  = computeRunningPaceTargets(goalTimeSec, distKm);
   const dayOrder     = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-  const planStart = new Date(planStartStr + 'T00:00:00');
+  const planStart = snapToSunday(new Date(planStartStr + 'T00:00:00'));
   const raceDate  = new Date(raceDateStr  + 'T00:00:00');
   const totalWeeks = Math.max(1, Math.round((raceDate - planStart) / (7 * 86400000)));
 
@@ -809,7 +819,7 @@ const SESSION_TEMPLATE_DATA = {
   // ── WEEK 1 ──
   0: { rest: true, restMsg: 'Plan starts tomorrow. Prep your gym kit and read through Week 1.' },
   1: {
-    week: 1, type: 'run', icon: '🏃', title: 'Run A — Reintroduction',
+    week: 1, type: 'run', icon: '🏃', title: 'Run A — Reintroduction', distKm: 3,
     subtitle: 'First run back. HR governs everything.',
     paceRef: 'easy', kneePhase: 'activation',
     blocks: [
@@ -836,7 +846,7 @@ const SESSION_TEMPLATE_DATA = {
   },
   4: { rest: true, restMsg: 'Rest day.' },
   5: {
-    week: 1, type: 'run', icon: '🏃', title: 'Run B — Easy Aerobic',
+    week: 1, type: 'run', icon: '🏃', title: 'Run B — Easy Aerobic', distKm: 4,
     subtitle: 'HR-governed easy run. Build time on feet.',
     paceRef: 'easy', kneePhase: 'activation',
     blocks: [
@@ -871,7 +881,7 @@ const SESSION_TEMPLATE_DATA = {
     note: 'No intensity. This is how you absorb Monday\'s sim session.',
   },
   9: {
-    week: 2, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
+    week: 2, type: 'run', icon: '🏃', title: 'Easy Aerobic Run', distKm: 5,
     subtitle: 'HR-governed. Build time on feet.',
     paceRef: 'easy', kneePhase: 'activation',
     blocks: [
@@ -903,7 +913,7 @@ const SESSION_TEMPLATE_DATA = {
     ],
   },
   12: {
-    week: 2, type: 'run', icon: '🏃', title: 'Tempo Run — Introduction',
+    week: 2, type: 'run', icon: '🏃', title: 'Tempo Run — Introduction', distKm: 3,
     subtitle: 'First proper tempo effort.',
     paceRef: 'tempo', kneePhase: 'activation',
     blocks: [
@@ -937,7 +947,7 @@ const SESSION_TEMPLATE_DATA = {
     ],
   },
   16: {
-    week: 3, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
+    week: 3, type: 'run', icon: '🏃', title: 'Easy Aerobic Run', distKm: 5,
     subtitle: 'HR-governed. Week 3 aerobic base.',
     paceRef: 'easy', kneePhase: 'activation',
     blocks: [
@@ -961,7 +971,7 @@ const SESSION_TEMPLATE_DATA = {
     ],
   },
   19: {
-    week: 3, type: 'run', icon: '🏃', title: 'Intervals — 1km Repeats at Race Pace',
+    week: 3, type: 'run', icon: '🏃', title: 'Intervals — 1km Repeats at Race Pace', distKm: 6,
     subtitle: 'First time hitting 5:30/km target.',
     paceRef: 'intervals', kneePhase: 'activation',
     blocks: [
@@ -995,7 +1005,7 @@ const SESSION_TEMPLATE_DATA = {
     note: 'This week is your peak training week. Recovery today matters.',
   },
   23: {
-    week: 4, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
+    week: 4, type: 'run', icon: '🏃', title: 'Easy Aerobic Run', distKm: 5,
     subtitle: 'HR-governed easy run. Active recovery.',
     paceRef: 'easy', kneePhase: 'activation',
     blocks: [
@@ -1025,7 +1035,7 @@ const SESSION_TEMPLATE_DATA = {
     ],
   },
   26: {
-    week: 4, type: 'run', icon: '🏃', title: 'Tempo + Row Intervals',
+    week: 4, type: 'run', icon: '🏃', title: 'Tempo + Row Intervals', distKm: 4,
     subtitle: 'First standalone rowing session. Establish your race-day row pace.',
     paceRef: 'tempo', kneePhase: 'activation',
     blocks: [
@@ -1063,7 +1073,7 @@ const SESSION_TEMPLATE_DATA = {
     note: 'Do not train today. This session is the adaptation.',
   },
   30: {
-    week: 5, type: 'run', icon: '🏃', title: 'Easy Aerobic Run',
+    week: 5, type: 'run', icon: '🏃', title: 'Easy Aerobic Run', distKm: 5,
     subtitle: '5km easy + strides. Legs should feel alive by the end.',
     paceRef: 'easy', kneePhase: 'activation', deload: true,
     blocks: [
@@ -1097,7 +1107,7 @@ const SESSION_TEMPLATE_DATA = {
     ],
   },
   33: {
-    week: 5, type: 'run', icon: '🏃', title: 'Race Pace Run — 8 × 1km',
+    week: 5, type: 'run', icon: '🏃', title: 'Race Pace Run — 8 × 1km', distKm: 8,
     subtitle: '5s faster than race pace. Build a buffer.',
     paceRef: 'intervals', kneePhase: 'activation', deload: true,
     blocks: [
@@ -1132,7 +1142,7 @@ const SESSION_TEMPLATE_DATA = {
     note: 'Deload week begins. Stay sharp, lock in pacing and transitions. Do not add extra work.',
   },
   37: {
-    week: 6, type: 'run', icon: '🏃', title: 'Easy Run — Keep the Legs Moving',
+    week: 6, type: 'run', icon: '🏃', title: 'Easy Run — Keep the Legs Moving', distKm: 3,
     subtitle: 'Short, controlled. Nothing more.',
     paceRef: 'easy', kneePhase: 'activation', deload: true,
     blocks: [
@@ -1155,7 +1165,7 @@ const SESSION_TEMPLATE_DATA = {
     note: 'Every set should feel easy. If it\'s hard, stop. Transitions are the hidden time-saver.',
   },
   39: {
-    week: 6, type: 'run', icon: '🏃', title: 'Sharpening Run',
+    week: 6, type: 'run', icon: '🏃', title: 'Sharpening Run', distKm: 5,
     subtitle: '5 × 1km — race pace feel, short.',
     paceRef: 'intervals', kneePhase: 'activation', deload: true,
     blocks: [
@@ -1169,7 +1179,7 @@ const SESSION_TEMPLATE_DATA = {
   41: { rest: true, restMsg: 'Rest day.' },
   42: { rest: true, restMsg: 'Rest or gentle 20 min walk. Zero intensity. Sleep 8+ hours tonight.' },
   43: {
-    week: 6, type: 'run', icon: '🏃', title: 'Shakeout Run',
+    week: 6, type: 'run', icon: '🏃', title: 'Shakeout Run', distKm: 2,
     paceRef: 'easy', kneePhase: 'activation', deload: true,
     blocks: [
       { title: 'Warm-up', items: ['Knee activation'] },
@@ -1197,7 +1207,7 @@ const SESSION_TEMPLATE_DATA = {
 let SESSIONS = {};
 function buildSessionMap(planStartStr) {
   const startStr = planStartStr || DEFAULT_PLAN_START_STR;
-  const start = new Date(startStr + 'T00:00:00');
+  const start = snapToSunday(new Date(startStr + 'T00:00:00'));
   PLAN_START = start;
   const map = {};
   Object.entries(SESSION_TEMPLATE_DATA).forEach(([dayStr, tpl]) => {
@@ -2306,9 +2316,8 @@ async function switchPlan(planType) {
     buildRunningSessionMap(userProfile);
   } else {
     const hyroxStart = userProfile.plan_start || DEFAULT_PLAN_START_STR;
-    buildSessionMap(hyroxStart);
+    buildSessionMap(hyroxStart);  // sets PLAN_START, snapped to Sunday
     RACE_DATE  = new Date((userProfile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
-    PLAN_START = new Date(hyroxStart + 'T00:00:00');
     // Restore Hyrox PACE_TARGETS
     Object.assign(PACE_TARGETS, {
       1: { easy:'6:25', tempo:'6:10', intervals:'5:55' },
