@@ -354,28 +354,6 @@
   <div style="font-size:11px;color:var(--muted);text-align:center;padding:5px 16px 8px">6 AM reminders · all remaining sessions · iPhone ready</div>
 </div>
 
-<!-- MFA Modal -->
-<div class="auth-overlay hidden" id="mfaOverlay">
-  <div class="auth-box" style="text-align:center">
-    <div style="font-size:32px;margin-bottom:8px">📧</div>
-    <h2 style="font-size:18px;font-weight:800;margin-bottom:6px">Garmin sent you a code</h2>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:4px">Check your email for a one-time code from Garmin.</p>
-    <p style="font-size:13px;color:var(--skipped);font-weight:700;margin-bottom:16px">Enter it quickly — the session expires in <span id="mfaCountdown">90</span>s</p>
-    <input id="mfaCodeInput" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8"
-      placeholder="Enter code"
-      style="width:100%;padding:14px;font-size:22px;font-weight:800;text-align:center;letter-spacing:.15em;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);margin-bottom:12px;outline:none">
-    <button id="mfaSubmitBtn" onclick="submitMfaCode()"
-      style="width:100%;padding:14px;background:var(--accent);color:#000;font-weight:800;font-size:15px;border:none;border-radius:10px;cursor:pointer;margin-bottom:8px">
-      Verify code →
-    </button>
-    <button onclick="cancelMfa()"
-      style="width:100%;padding:10px;background:transparent;color:var(--muted);font-size:13px;border:none;cursor:pointer">
-      Cancel
-    </button>
-    <p id="mfaError" style="font-size:12px;color:var(--skipped);margin-top:8px;display:none"></p>
-  </div>
-</div>
-
 <!-- Feedback Modal -->
 <div class="modal-overlay" id="feedbackModal">
   <div class="modal" style="position:relative">
@@ -526,6 +504,13 @@ function computeRunningPaceTargets(goalTimeSec, distanceKm) {
   };
 }
 
+function blendFactor(weekNum, totalWeeks) {
+  // Returns 0.0 at week 1 (full baseline), 1.0 at the taper entry (~85% of plan).
+  // Taper and race week always train at goal pace.
+  const peakEndWeek = Math.round(totalWeeks * 0.85);
+  return Math.min(1, (weekNum - 1) / Math.max(1, peakEndWeek - 1));
+}
+
 function secToMMSS(sec) {
   if (!sec || sec <= 0) return '0:00';
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -549,17 +534,34 @@ function buildRunningSessionMap(profile) {
   RACE_DATE  = raceDate;
   PLAN_START = planStart;
 
-  // Update PACE_TARGETS so adjustedPace() works for running
+  // Progressive pacing: start at baseline-derived targets, reach goal targets by taper.
+  // If no baseline stored (or user is already faster than goal), use flat goal targets.
+  const goalPaceSecPer = goalTimeSec ? Math.round(goalTimeSec / distKm) : null;
+  const baselinePaceSecPer = profile.baseline_pace_sec || null;
+  const baselineTargets = (baselinePaceSecPer && goalPaceSecPer && baselinePaceSecPer > goalPaceSecPer)
+    ? computeRunningPaceTargets(baselinePaceSecPer * distKm, distKm)
+    : null;
+
   if (paceTargets) {
-    const pt = {
-      easy:      secToMMSS(paceTargets.easy),
-      long:      secToMMSS(paceTargets.long),
-      tempo:     secToMMSS(paceTargets.tempo),
-      intervals: secToMMSS(paceTargets.interval),
-      race:      secToMMSS(paceTargets.race),
-    };
     for (let w = 1; w <= Math.max(totalWeeks, 20); w++) {
-      PACE_TARGETS[w] = pt;
+      let t = paceTargets;
+      if (baselineTargets && w <= totalWeeks) {
+        const f = blendFactor(w, totalWeeks);
+        t = {
+          easy:     Math.round(baselineTargets.easy     + f * (paceTargets.easy     - baselineTargets.easy)),
+          long:     Math.round(baselineTargets.long     + f * (paceTargets.long     - baselineTargets.long)),
+          tempo:    Math.round(baselineTargets.tempo    + f * (paceTargets.tempo    - baselineTargets.tempo)),
+          interval: Math.round(baselineTargets.interval + f * (paceTargets.interval - baselineTargets.interval)),
+          race:     Math.round(baselineTargets.race     + f * (paceTargets.race     - baselineTargets.race)),
+        };
+      }
+      PACE_TARGETS[w] = {
+        easy:      secToMMSS(t.easy),
+        long:      secToMMSS(t.long),
+        tempo:     secToMMSS(t.tempo),
+        intervals: secToMMSS(t.interval),
+        race:      secToMMSS(t.race),
+      };
     }
   }
 
@@ -1342,8 +1344,13 @@ function subscribeRealtime() {
       filter: `user_id=eq.${currentUser.id}`
     }, payload => {
       if (!payload.new) return;
-      state.completions = payload.new.completions || {};
-      state.paceAdj     = payload.new.pace_adj   || {};
+      const isRunning = userProfile?.active_plan === 'running';
+      state.completions = isRunning
+        ? (payload.new.running_completions || {})
+        : (payload.new.completions || {});
+      state.paceAdj = isRunning
+        ? (payload.new.running_pace_adj || {})
+        : (payload.new.pace_adj || {});
       saveLocalState(state);
       render();
     })
@@ -1630,6 +1637,15 @@ function showWizard() {
   document.getElementById('wzRunGoal').value      = userProfile?.goal_time_sec
     ? `${Math.floor(userProfile.goal_time_sec/3600)}:${String(Math.floor((userProfile.goal_time_sec%3600)/60)).padStart(2,'0')}`
     : '';
+
+  // Pre-fill baseline from stored pace (shown as 10 km equivalent)
+  if (userProfile?.baseline_pace_sec) {
+    const b10kSec = userProfile.baseline_pace_sec * 10;
+    document.getElementById('wzBaselineDist').value = '10k';
+    document.getElementById('wzBaselineTime').value =
+      `${Math.floor(b10kSec / 3600)}:${String(Math.floor((b10kSec % 3600) / 60)).padStart(2, '0')}`;
+    updateBaselinePreview();
+  }
 
   // Pre-fill training level
   wizardTrainingLevel = userProfile?.training_level || 'intermediate';
@@ -1953,6 +1969,15 @@ async function wizardFinish() {
 
   userProfile = { ...(userProfile || {}), ...profile };
 
+  // Inject baseline into userProfile so buildRunningSessionMap uses it immediately,
+  // then best-effort save to DB (requires baseline_pace_sec column in profiles table).
+  if (wizardRaceType === 'running' && wizardBaselinePaceSec) {
+    userProfile.baseline_pace_sec = wizardBaselinePaceSec;
+    sb.from('profiles').update({ baseline_pace_sec: wizardBaselinePaceSec })
+      .eq('id', currentUser.id)
+      .then(({ error: bErr }) => { if (bErr) console.warn('baseline_pace_sec not saved:', bErr.message); });
+  }
+
   if (wizardRaceType === 'hyrox') {
     buildSessionMap(profile.plan_start);
     RACE_DATE = new Date((profile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
@@ -2084,81 +2109,6 @@ async function syncIntervalsIcu() {
   }
 }
 
-// ── Garmin MFA modal ──────────────────────────────────────────────────────────
-
-let _mfaUserId = null;
-let _mfaTimer  = null;
-
-function showMfaModal(userId) {
-  _mfaUserId = userId;
-  const overlay  = document.getElementById('mfaOverlay');
-  const input    = document.getElementById('mfaCodeInput');
-  const errEl    = document.getElementById('mfaError');
-  const countEl  = document.getElementById('mfaCountdown');
-  const submitBtn = document.getElementById('mfaSubmitBtn');
-
-  errEl.style.display = 'none';
-  errEl.textContent   = '';
-  input.value         = '';
-  submitBtn.disabled  = false;
-  submitBtn.textContent = 'Verify code →';
-  overlay.classList.remove('hidden');
-  input.focus();
-
-  // Countdown timer — session lives ~90s from when Garmin triggered MFA
-  let secs = 90;
-  countEl.textContent = secs;
-  clearInterval(_mfaTimer);
-  _mfaTimer = setInterval(() => {
-    secs--;
-    countEl.textContent = Math.max(0, secs);
-    if (secs <= 0) {
-      clearInterval(_mfaTimer);
-      countEl.textContent = '0';
-    }
-  }, 1000);
-
-  // Allow Enter key to submit
-  input.onkeydown = (e) => { if (e.key === 'Enter') submitMfaCode(); };
-
-  return new Promise(resolve => { overlay._resolve = resolve; });
-}
-
-async function submitMfaCode() {
-  const input     = document.getElementById('mfaCodeInput');
-  const errEl     = document.getElementById('mfaError');
-  const submitBtn = document.getElementById('mfaSubmitBtn');
-  const code      = input.value.replace(/\D/g, '').trim();
-
-  if (!code) { errEl.textContent = 'Please enter the code.'; errEl.style.display = 'block'; return; }
-
-  submitBtn.disabled    = true;
-  submitBtn.textContent = 'Verifying…';
-  errEl.style.display   = 'none';
-
-  const result = await connectGarminMfa(_mfaUserId, code);
-
-  if (result.error) {
-    errEl.textContent   = result.error;
-    errEl.style.display = 'block';
-    submitBtn.disabled  = false;
-    submitBtn.textContent = 'Try again →';
-  } else {
-    closeMfaModal();
-  }
-}
-
-function cancelMfa() {
-  closeMfaModal();
-}
-
-function closeMfaModal() {
-  clearInterval(_mfaTimer);
-  const overlay = document.getElementById('mfaOverlay');
-  overlay.classList.add('hidden');
-  if (overlay._resolve) { overlay._resolve(); overlay._resolve = null; }
-}
-
 // ── Garmin Connect sync functions ─────────────────────────────────────────────
 
 async function connectGarmin(userId, email, password) {
@@ -2219,13 +2169,34 @@ async function syncFromGarmin(dateStr) {
   const btn = document.getElementById('garminSyncBtn');
   if (btn) { btn.textContent = '⏳ Fetching from Garmin…'; btn.disabled = true; }
 
+  // Pre-ping the service to wake it if sleeping (Railway cold-start).
+  // Ignore failures — the main sync call will surface any real error.
+  try {
+    const wake = await fetch(GARMIN_SERVICE_URL + '/health', { method: 'GET', signal: AbortSignal.timeout(8000) });
+    if (!wake.ok && btn) btn.textContent = '⏳ Service starting up…';
+  } catch (_) { if (btn) btn.textContent = '⏳ Service starting up…'; }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120000);
   try {
     const res = await fetch(GARMIN_SERVICE_URL + '/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Service-Key': GARMIN_SERVICE_KEY },
       body: JSON.stringify({ user_id: currentUser.id, session_date: dateStr }),
+      signal: controller.signal,
     });
-    const json = await res.json();
+    clearTimeout(timer);
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); }
+    catch (_) {
+      // Gunicorn/Railway returned an HTML error page (worker crash or timeout)
+      const hint = res.status === 500
+        ? 'Session may have expired — please reconnect Garmin in profile settings'
+        : `Server error ${res.status} — try again`;
+      if (btn) { btn.textContent = '✕ ' + hint; btn.disabled = false; }
+      return;
+    }
 
     if (!res.ok) {
       if (btn) { btn.textContent = '✕ ' + (json.error || 'Sync failed'); btn.disabled = false; }
@@ -2275,8 +2246,12 @@ async function syncFromGarmin(dateStr) {
     recomputeAllPaceAdj();
     render();
   } catch (e) {
+    clearTimeout(timer);
     console.error('Garmin sync error:', e);
-    if (btn) { btn.textContent = 'Network error — try again'; btn.disabled = false; }
+    const msg = e.name === 'AbortError'
+      ? 'Timed out — Garmin service is slow, try again in a moment'
+      : 'Service unreachable — check your connection or try again shortly';
+    if (btn) { btn.textContent = '✕ ' + msg; btn.disabled = false; }
   }
 }
 
@@ -2998,7 +2973,7 @@ function renderSession() {
     const targetPace  = adjustedPace(week, paceRef);  // applies paceAdj
     const easyPace    = adjustedPace(week, 'easy');
     const tempoPace   = adjustedPace(week, 'tempo');
-    const intervalPace= adjustedPace(week, 'interval') !== '–' ? adjustedPace(week, 'interval') : adjustedPace(week, 'intervals');
+    const intervalPace= adjustedPace(week, 'intervals');
     const longPace    = adjustedPace(week, 'long');
     const racePace    = adjustedPace(week, 'race');
     const zoneLabel   = { easy:'Zone 2 · conversational', tempo:'Zone 4 · comfortably hard', interval:'Zone 4–5 · race effort', long:'Zone 2 · aerobic base', race:'Race effort · trust your training', shakeout:'Zone 1–2 · very easy' };
