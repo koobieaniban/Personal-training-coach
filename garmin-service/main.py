@@ -258,9 +258,10 @@ def connect():
 
     try:
         save_credentials(user_id, email, password)
-        save_garth_tokens(outcome['client'], user_id)
     except Exception as e:
-        return jsonify({'error': f'Connected but DB write failed: {e}'}), 500
+        return jsonify({'error': f'Connected but credential save failed: {e}'}), 500
+
+    save_garth_tokens(outcome['client'], user_id)  # best-effort; logs on failure
 
     log.info('Garmin connected (no MFA) for %s', user_id)
     return jsonify({'status': 'connected', 'email': email})
@@ -310,10 +311,11 @@ def connect_mfa():
 
     try:
         save_credentials(user_id, email, password)
-        save_garth_tokens(pending['client'], user_id)
     except Exception as e:
-        log.error('DB write failed for %s: %s', user_id, e)
-        return jsonify({'error': f'Auth succeeded but DB write failed: {e}'}), 500
+        log.error('Credential save failed for %s: %s', user_id, e)
+        return jsonify({'error': f'Auth succeeded but credential save failed: {e}'}), 500
+
+    save_garth_tokens(pending['client'], user_id)  # best-effort; logs on failure
 
     log.info('Garmin MFA complete for %s', user_id)
     return jsonify({'status': 'connected', 'email': email})
@@ -350,19 +352,11 @@ def sync():
     client = load_garth_client(creds)
 
     if not client:
-        # Fall back to credential login
-        email    = creds.get('garmin_email', '')
-        enc_pass = creds.get('garmin_password_enc')
-        if not enc_pass:
-            return jsonify({'error': 'Missing credentials — please reconnect Garmin in your profile'}), 500
-        try:
-            password = decrypt(enc_pass)
-            client   = Garmin(email=email, password=password)
-            client.login()
-            # Cache the new tokens for next time
-            save_garth_tokens(client, user_id)
-        except Exception as e:
-            return jsonify({'error': f'Garmin authentication failed: {e}'}), 500
+        # No valid tokens — credential-only login will fail if Garmin requires MFA.
+        # Tell the user to reconnect so the full MFA flow runs and tokens get saved.
+        return jsonify({
+            'error': 'Garmin session expired — please reconnect Garmin in your profile settings to refresh your session.'
+        }), 401
 
     try:
         sb.table('garmin_credentials').update({
