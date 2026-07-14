@@ -110,6 +110,7 @@ def load_garth_client(creds: dict) -> Optional[Garmin]:
     so this works for hours-to-days without requiring a new full login.
     Returns None if tokens are missing, invalid, or unrestorable.
     """
+    import concurrent.futures
     import garth as garth_lib
 
     enc = creds.get('garmin_tokens_enc')
@@ -128,8 +129,15 @@ def load_garth_client(creds: dict) -> Optional[Garmin]:
             loaded_garth = garth_lib.Client.load(tmpdir)
             client = Garmin()
             client.garth = loaded_garth   # replace the empty client
-            # Quick test — also triggers token refresh if access_token expired
-            client.get_user_profile()
+            # Validate tokens with a 30s timeout — stale/invalid tokens can cause
+            # garth to hang indefinitely on the OAuth refresh, which previously
+            # caused gunicorn to kill the worker and return an HTML 500 page.
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(client.get_user_profile)
+                try:
+                    fut.result(timeout=30)
+                except concurrent.futures.TimeoutError:
+                    raise Exception('Garmin API timed out during token validation')
             log.info('Restored Garmin session from stored tokens')
             return client
     except Exception as e:

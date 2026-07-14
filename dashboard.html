@@ -2186,7 +2186,17 @@ async function syncFromGarmin(dateStr) {
       signal: controller.signal,
     });
     clearTimeout(timer);
-    const json = await res.json();
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); }
+    catch (_) {
+      // Gunicorn/Railway returned an HTML error page (worker crash or timeout)
+      const hint = res.status === 500
+        ? 'Session may have expired — please reconnect Garmin in profile settings'
+        : `Server error ${res.status} — try again`;
+      if (btn) { btn.textContent = '✕ ' + hint; btn.disabled = false; }
+      return;
+    }
 
     if (!res.ok) {
       if (btn) { btn.textContent = '✕ ' + (json.error || 'Sync failed'); btn.disabled = false; }
