@@ -1990,7 +1990,7 @@ async function wizardFinish() {
         if (btn) { btn.textContent = 'Connecting to Garmin…'; btn.disabled = true; }
         const result = await connectGarmin(currentUser.id, gEmail, gPassword);
         if (result.status === 'mfa_required') {
-          // Show OTP field inline, stop here
+          // Garmin requires a code — show OTP field inline
           document.getElementById('garminCredFields').style.display = 'none';
           if (mfaSection) mfaSection.style.display = 'block';
           if (mfaErrEl)   mfaErrEl.style.display   = 'none';
@@ -1999,7 +1999,18 @@ async function wizardFinish() {
           return;
         }
         if (result.error) {
-          alert('Garmin connection failed: ' + result.error + '\n\nYou can retry in your profile settings anytime.');
+          // Connection failed — but Garmin may still have sent an OTP
+          // (happens when Garmin is slow and our request timed out).
+          // Show OTP field with an error note so user can enter the code if they have it.
+          document.getElementById('garminCredFields').style.display = 'none';
+          if (mfaSection) mfaSection.style.display = 'block';
+          if (mfaErrEl) {
+            mfaErrEl.textContent = `Connection error: ${result.error}. If Garmin emailed you a code, enter it below.`;
+            mfaErrEl.style.display = 'block';
+          }
+          setTimeout(() => document.getElementById('wzGarminMfa')?.focus(), 100);
+          if (btn) { btn.textContent = 'Verify code & finish →'; btn.disabled = false; }
+          return;
         }
         if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
       }
@@ -2153,7 +2164,7 @@ function closeMfaModal() {
 async function connectGarmin(userId, email, password) {
   if (!GARMIN_SERVICE_URL) return { error: 'Garmin service not yet configured.' };
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60000);
+  const timer = setTimeout(() => controller.abort(), 100000);
   try {
     const res = await fetch(GARMIN_SERVICE_URL + '/connect', {
       method: 'POST',
