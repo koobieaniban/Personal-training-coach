@@ -2169,12 +2169,23 @@ async function syncFromGarmin(dateStr) {
   const btn = document.getElementById('garminSyncBtn');
   if (btn) { btn.textContent = '⏳ Fetching from Garmin…'; btn.disabled = true; }
 
+  // Pre-ping the service to wake it if sleeping (Railway cold-start).
+  // Ignore failures — the main sync call will surface any real error.
+  try {
+    const wake = await fetch(GARMIN_SERVICE_URL + '/health', { method: 'GET', signal: AbortSignal.timeout(8000) });
+    if (!wake.ok && btn) btn.textContent = '⏳ Service starting up…';
+  } catch (_) { if (btn) btn.textContent = '⏳ Service starting up…'; }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120000);
   try {
     const res = await fetch(GARMIN_SERVICE_URL + '/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Service-Key': GARMIN_SERVICE_KEY },
       body: JSON.stringify({ user_id: currentUser.id, session_date: dateStr }),
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     const json = await res.json();
 
     if (!res.ok) {
@@ -2225,8 +2236,12 @@ async function syncFromGarmin(dateStr) {
     recomputeAllPaceAdj();
     render();
   } catch (e) {
+    clearTimeout(timer);
     console.error('Garmin sync error:', e);
-    if (btn) { btn.textContent = 'Network error — try again'; btn.disabled = false; }
+    const msg = e.name === 'AbortError'
+      ? 'Timed out — Garmin service is slow, try again in a moment'
+      : 'Service unreachable — check your connection or try again shortly';
+    if (btn) { btn.textContent = '✕ ' + msg; btn.disabled = false; }
   }
 }
 
