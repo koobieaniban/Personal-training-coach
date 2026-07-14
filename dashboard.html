@@ -504,6 +504,13 @@ function computeRunningPaceTargets(goalTimeSec, distanceKm) {
   };
 }
 
+function blendFactor(weekNum, totalWeeks) {
+  // Returns 0.0 at week 1 (full baseline), 1.0 at the taper entry (~85% of plan).
+  // Taper and race week always train at goal pace.
+  const peakEndWeek = Math.round(totalWeeks * 0.85);
+  return Math.min(1, (weekNum - 1) / Math.max(1, peakEndWeek - 1));
+}
+
 function secToMMSS(sec) {
   if (!sec || sec <= 0) return '0:00';
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -527,17 +534,34 @@ function buildRunningSessionMap(profile) {
   RACE_DATE  = raceDate;
   PLAN_START = planStart;
 
-  // Update PACE_TARGETS so adjustedPace() works for running
+  // Progressive pacing: start at baseline-derived targets, reach goal targets by taper.
+  // If no baseline stored (or user is already faster than goal), use flat goal targets.
+  const goalPaceSecPer = goalTimeSec ? Math.round(goalTimeSec / distKm) : null;
+  const baselinePaceSecPer = profile.baseline_pace_sec || null;
+  const baselineTargets = (baselinePaceSecPer && goalPaceSecPer && baselinePaceSecPer > goalPaceSecPer)
+    ? computeRunningPaceTargets(baselinePaceSecPer * distKm, distKm)
+    : null;
+
   if (paceTargets) {
-    const pt = {
-      easy:      secToMMSS(paceTargets.easy),
-      long:      secToMMSS(paceTargets.long),
-      tempo:     secToMMSS(paceTargets.tempo),
-      intervals: secToMMSS(paceTargets.interval),
-      race:      secToMMSS(paceTargets.race),
-    };
     for (let w = 1; w <= Math.max(totalWeeks, 20); w++) {
-      PACE_TARGETS[w] = pt;
+      let t = paceTargets;
+      if (baselineTargets && w <= totalWeeks) {
+        const f = blendFactor(w, totalWeeks);
+        t = {
+          easy:     Math.round(baselineTargets.easy     + f * (paceTargets.easy     - baselineTargets.easy)),
+          long:     Math.round(baselineTargets.long     + f * (paceTargets.long     - baselineTargets.long)),
+          tempo:    Math.round(baselineTargets.tempo    + f * (paceTargets.tempo    - baselineTargets.tempo)),
+          interval: Math.round(baselineTargets.interval + f * (paceTargets.interval - baselineTargets.interval)),
+          race:     Math.round(baselineTargets.race     + f * (paceTargets.race     - baselineTargets.race)),
+        };
+      }
+      PACE_TARGETS[w] = {
+        easy:      secToMMSS(t.easy),
+        long:      secToMMSS(t.long),
+        tempo:     secToMMSS(t.tempo),
+        intervals: secToMMSS(t.interval),
+        race:      secToMMSS(t.race),
+      };
     }
   }
 
@@ -1614,6 +1638,15 @@ function showWizard() {
     ? `${Math.floor(userProfile.goal_time_sec/3600)}:${String(Math.floor((userProfile.goal_time_sec%3600)/60)).padStart(2,'0')}`
     : '';
 
+  // Pre-fill baseline from stored pace (shown as 10 km equivalent)
+  if (userProfile?.baseline_pace_sec) {
+    const b10kSec = userProfile.baseline_pace_sec * 10;
+    document.getElementById('wzBaselineDist').value = '10k';
+    document.getElementById('wzBaselineTime').value =
+      `${Math.floor(b10kSec / 3600)}:${String(Math.floor((b10kSec % 3600) / 60)).padStart(2, '0')}`;
+    updateBaselinePreview();
+  }
+
   // Pre-fill training level
   wizardTrainingLevel = userProfile?.training_level || 'intermediate';
   selectWizLevel(wizardTrainingLevel);
@@ -1935,6 +1968,15 @@ async function wizardFinish() {
   }
 
   userProfile = { ...(userProfile || {}), ...profile };
+
+  // Inject baseline into userProfile so buildRunningSessionMap uses it immediately,
+  // then best-effort save to DB (requires baseline_pace_sec column in profiles table).
+  if (wizardRaceType === 'running' && wizardBaselinePaceSec) {
+    userProfile.baseline_pace_sec = wizardBaselinePaceSec;
+    sb.from('profiles').update({ baseline_pace_sec: wizardBaselinePaceSec })
+      .eq('id', currentUser.id)
+      .then(({ error: bErr }) => { if (bErr) console.warn('baseline_pace_sec not saved:', bErr.message); });
+  }
 
   if (wizardRaceType === 'hyrox') {
     buildSessionMap(profile.plan_start);
