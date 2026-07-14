@@ -3711,42 +3711,6 @@ async function handleWorkoutFile(file, dk) {
   render();
 }
 
-// ── Claude API key management ─────────────────────────────────────────────────
-
-function getApiKey() { return localStorage.getItem('hyrox_claude_key') || ''; }
-function setApiKey(k) { localStorage.setItem('hyrox_claude_key', k.trim()); }
-
-function promptApiKey() {
-  const existing = getApiKey();
-  document.getElementById('modalTitle').textContent = '🔑 Claude API Key';
-  document.getElementById('modalSub').textContent = 'One-time setup · stored only on this device';
-  document.getElementById('modalBody').innerHTML = `
-    <div style="margin-bottom:16px;font-size:13px;color:var(--muted);line-height:1.65">
-      Used only for screenshot analysis. Your key is sent directly to Anthropic's API — never stored on any server.
-      Get one at <strong style="color:var(--text)">console.anthropic.com</strong> → API Keys.
-    </div>
-    <div class="q-block">
-      <span class="q-label">API Key</span>
-      <input id="apiKeyInput" type="password" placeholder="sk-ant-api03-…"
-        style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:10px 12px;font-family:monospace;outline:none"
-        value="${existing}">
-    </div>
-    ${existing ? '<div style="font-size:12px;color:var(--done);margin-bottom:12px">✓ Key saved. Replace it above to update.</div>' : ''}
-    <button class="save-btn" onclick="saveApiKey()">Save key</button>`;
-  document.getElementById('feedbackModal').classList.add('open');
-  setTimeout(() => document.getElementById('apiKeyInput')?.focus(), 100);
-}
-
-function saveApiKey() {
-  const val = (document.getElementById('apiKeyInput')?.value || '').trim();
-  if (!val) { alert('Please enter your API key.'); return; }
-  if (!val.startsWith('sk-ant-')) { alert('That doesn\'t look like an Anthropic API key (should start with sk-ant-).'); return; }
-  setApiKey(val);
-  document.getElementById('apiKeyBtn').textContent = '🔑 Claude API key — ✓ saved';
-  closeModal();
-  render();
-}
-
 // ── Screenshot analysis ───────────────────────────────────────────────────────
 
 function fileToBase64(file) {
@@ -3758,56 +3722,20 @@ function fileToBase64(file) {
   });
 }
 
-async function callClaudeVision(base64, mimeType, apiKey) {
-  const prompt = `This is a Garmin fitness activity screenshot. Extract every visible workout metric and return ONLY a JSON object — no prose, no markdown fences.
-
-Required format:
-{
-  "total_distance_km": <number or null>,
-  "total_time_seconds": <number or null>,
-  "avg_pace_sec_per_km": <number or null>,
-  "avg_hr_bpm": <number or null>,
-  "max_hr_bpm": <number or null>,
-  "calories": <number or null>,
-  "laps": [
-    { "km": <lap number>, "pace_sec_per_km": <number or null>, "avg_hr": <number or null> }
-  ]
-}
-
-Conversion rules:
-- Pace MM:SS/km → total seconds (5:30 = 330, 6:15 = 375). Valid running pace is 180–900 sec/km (3:00–15:00/km). If a value labelled as pace exceeds 900 sec/km it is almost certainly the total activity time — put it in total_time_seconds instead and compute avg_pace_sec_per_km = total_time_seconds / total_distance_km.
-- Time H:MM:SS or MM:SS → total seconds (28:45 = 1725, 1:02:30 = 3750)
-- If a per-km splits table is visible, populate the laps array in order
-- If no splits table is visible, return laps as []
-- Use null for any value not visible in the screenshot`;
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+async function callClaudeVision(base64, mimeType) {
+  if (!GARMIN_SERVICE_URL) throw new Error('Service not configured — contact support.');
+  const res = await fetch(GARMIN_SERVICE_URL + '/analyze-screenshot', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: [
-        { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
-        { type: 'text', text: prompt },
-      ]}],
-    }),
+    headers: { 'Content-Type': 'application/json', 'X-Service-Key': GARMIN_SERVICE_KEY },
+    body: JSON.stringify({ image_base64: base64, media_type: mimeType }),
   });
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `API error ${res.status}`);
+    throw new Error(err.error || `Server error ${res.status}`);
   }
   const json = await res.json();
-  const text = json.content?.[0]?.text || '';
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON in response — try a clearer screenshot');
-  return JSON.parse(match[0]);
+  if (json.error) throw new Error(json.error);
+  return json.data;
 }
 
 async function makeThumb(file) {
@@ -3829,9 +3757,6 @@ async function makeThumb(file) {
 }
 
 async function handleScreenshotUpload(file, dk, slotIndex) {
-  const apiKey = getApiKey();
-  if (!apiKey) { promptApiKey(); return; }
-
   const el = document.getElementById('analysisArea');
   el.innerHTML = `<div style="margin:12px 16px;padding:24px;text-align:center;color:var(--muted);font-size:13px;background:var(--card);border-radius:14px;border:1px solid var(--border)">
     <div style="font-size:24px;margin-bottom:10px">🔍</div>
@@ -3841,7 +3766,7 @@ async function handleScreenshotUpload(file, dk, slotIndex) {
   try {
     const [base64, thumb] = await Promise.all([fileToBase64(file), makeThumb(file)]);
     const mimeType = file.type || 'image/jpeg';
-    const data = await callClaudeVision(base64, mimeType, apiKey);
+    const data = await callClaudeVision(base64, mimeType);
 
     // ── Normalise model output before using it ─────────────────────────────
     // Valid running pace: 180–900 sec/km (3:00–15:00/km).
@@ -3901,7 +3826,7 @@ async function handleScreenshotUpload(file, dk, slotIndex) {
   } catch (err) {
     el.innerHTML = `<div style="margin:12px 16px;padding:16px;background:#2a1010;border-radius:12px;font-size:13px;color:#ff9999;line-height:1.6">
       ${err.message}<br><br>
-      <button onclick="promptApiKey()" style="color:var(--accent2);background:none;border:none;cursor:pointer;font-size:13px;padding:0">Update API key →</button>
+      Try a clearer screenshot showing the main activity summary (pace, HR, distance).
     </div>`;
   }
 }
@@ -4021,8 +3946,6 @@ document.getElementById('feedbackModal').addEventListener('click', function(e) {
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-
-// API key button removed — key is prompted automatically on screenshot upload
 
 // Initialise auth then render (auth state listener calls render on change)
 initAuth().then(() => render());
