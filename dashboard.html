@@ -1962,20 +1962,55 @@ async function wizardFinish() {
 
   // Garmin connect if chosen
   if (wizardSyncMethod === 'garmin_connect') {
-    const gEmail    = document.getElementById('wzGarminEmail')?.value?.trim();
-    const gPassword = document.getElementById('wzGarminPassword')?.value?.trim();
-    if (gEmail && gPassword) {
-      if (btn) { btn.textContent = 'Connecting to Garmin…'; btn.disabled = true; }
-      const result = await connectGarmin(currentUser.id, gEmail, gPassword);
-      if (result.status === 'mfa_required') {
-        if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
-        await showMfaModal(currentUser.id);
-      } else if (result.error) {
-        alert('Garmin connection failed: ' + result.error + '\n\nYou can retry in your profile settings anytime.');
+    const mfaSection = document.getElementById('garminMfaSection');
+    const mfaErrEl   = document.getElementById('wzMfaError');
+
+    // ── Phase 2: user already entered OTP, submit it ──────────────────────
+    if (mfaSection?.style.display !== 'none') {
+      const code = (document.getElementById('wzGarminMfa')?.value || '').replace(/\D/g, '').trim();
+      if (!code) {
+        if (mfaErrEl) { mfaErrEl.textContent = 'Please enter the code from your email.'; mfaErrEl.style.display = 'block'; }
+        if (btn) { btn.disabled = false; }
+        return;
       }
-      if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
+      if (btn) { btn.textContent = 'Verifying…'; btn.disabled = true; }
+      const mfaResult = await connectGarminMfa(currentUser.id, code);
+      if (mfaResult.error) {
+        if (mfaErrEl) { mfaErrEl.textContent = mfaResult.error; mfaErrEl.style.display = 'block'; }
+        if (btn) { btn.textContent = 'Verify code & finish →'; btn.disabled = false; }
+        return;
+      }
+      // MFA success — fall through to finish wizard
+
+    } else {
+      // ── Phase 1: send email + password, see if MFA is needed ─────────────
+      const gEmail    = document.getElementById('wzGarminEmail')?.value?.trim();
+      const gPassword = document.getElementById('wzGarminPassword')?.value?.trim();
+      if (gEmail && gPassword) {
+        if (btn) { btn.textContent = 'Connecting to Garmin…'; btn.disabled = true; }
+        const result = await connectGarmin(currentUser.id, gEmail, gPassword);
+        if (result.status === 'mfa_required') {
+          // Show OTP field inline, stop here
+          document.getElementById('garminCredFields').style.display = 'none';
+          if (mfaSection) mfaSection.style.display = 'block';
+          if (mfaErrEl)   mfaErrEl.style.display   = 'none';
+          setTimeout(() => document.getElementById('wzGarminMfa')?.focus(), 100);
+          if (btn) { btn.textContent = 'Verify code & finish →'; btn.disabled = false; }
+          return;
+        }
+        if (result.error) {
+          alert('Garmin connection failed: ' + result.error + '\n\nYou can retry in your profile settings anytime.');
+        }
+        if (btn) { btn.textContent = 'Build my plan →'; btn.disabled = false; }
+      }
     }
   }
+
+  // Reset Garmin fields for next time the wizard opens
+  const mfaSec = document.getElementById('garminMfaSection');
+  const credSec = document.getElementById('garminCredFields');
+  if (mfaSec)  mfaSec.style.display  = 'none';
+  if (credSec) credSec.style.display = 'block';
 
   renderPlanSwitcher();
   document.getElementById('wizardOverlay').classList.add('hidden');
@@ -4376,13 +4411,28 @@ function downloadICS() {
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px;padding:10px 12px;background:#0f1117;border:1px solid var(--border);border-radius:8px;line-height:1.6">
           🔒 Your password is encrypted before storage and never sent to third parties.
         </div>
-        <div class="wizard-field">
-          <label class="wizard-label">Garmin Connect email</label>
-          <input class="auth-input" id="wzGarminEmail" type="email" placeholder="your@garmin.email" autocomplete="off">
+        <div id="garminCredFields">
+          <div class="wizard-field">
+            <label class="wizard-label">Garmin Connect email</label>
+            <input class="auth-input" id="wzGarminEmail" type="email" placeholder="your@garmin.email" autocomplete="off">
+          </div>
+          <div class="wizard-field">
+            <label class="wizard-label">Garmin Connect password</label>
+            <input class="auth-input" id="wzGarminPassword" type="password" placeholder="Garmin Connect password" autocomplete="new-password">
+          </div>
         </div>
-        <div class="wizard-field">
-          <label class="wizard-label">Garmin Connect password</label>
-          <input class="auth-input" id="wzGarminPassword" type="password" placeholder="Garmin Connect password" autocomplete="new-password">
+        <div id="garminMfaSection" style="display:none">
+          <div style="font-size:13px;color:var(--text);margin-bottom:12px;padding:12px;background:#1a1f2e;border:1px solid var(--accent);border-radius:8px;line-height:1.6;text-align:center">
+            ✉️ <strong>Check your email</strong> — Garmin sent you a one-time code.
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Enter it below before it expires.</div>
+          </div>
+          <div class="wizard-field">
+            <label class="wizard-label">One-time code</label>
+            <input class="auth-input" id="wzGarminMfa" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8"
+              placeholder="123456"
+              style="text-align:center;letter-spacing:.2em;font-size:22px;font-weight:800">
+          </div>
+          <p id="wzMfaError" style="font-size:12px;color:var(--skipped);display:none;margin-top:-8px;margin-bottom:8px"></p>
         </div>
       </div>
       <button class="wizard-next" id="startTrainingBtn" onclick="wizardFinish()">Build my plan →</button>
