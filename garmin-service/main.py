@@ -7,13 +7,17 @@ Required Railway env vars:
   SUPABASE_SERVICE_KEY  — service_role key (bypasses RLS)
   GARMIN_ENCRYPT_KEY    — Fernet key
   SERVICE_SECRET        — shared secret sent in X-Service-Key header
+  ANTHROPIC_API_KEY     — for screenshot analysis (/analyze-screenshot endpoint)
 
 IMPORTANT: deploy with a single gunicorn worker (see Procfile).
 MFA state is held in-process; multiple workers would lose it.
 """
 import os
+import re
+import json
 import time
 import logging
+import tempfile
 import threading
 import importlib.metadata
 from datetime import datetime, timedelta
@@ -71,10 +75,59 @@ def save_credentials(user_id: str, email: str, password: str):
         'user_id':             user_id,
         'garmin_email':        email,
         'garmin_password_enc': encrypt(password),
-        'garmin_tokens_enc':   None,
         'sync_enabled':        True,
         'updated_at':          datetime.utcnow().isoformat(),
     }, on_conflict='user_id').execute()
+
+
+def save_garth_tokens(client: Garmin, user_id: str):
+    """Persist garth OAuth tokens to Supabase after a successful login."""
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client.garth.dump(tmpdir)
+            files = {}
+            for fname in os.listdir(tmpdir):
+                fpath = os.path.join(tmpdir, fname)
+                if os.path.isfile(fpath):
+                    with open(fpath) as f:
+                        files[fname] = f.read()
+            if not files:
+                log.warning('No garth token files found for %s', user_id)
+                return
+            sb.table('garmin_credentials').update({
+                'garmin_tokens_enc': encrypt(json.dumps(files)),
+                'updated_at':        datetime.utcnow().isoformat(),
+            }).eq('user_id', user_id).execute()
+            log.info('Saved garth tokens (%d files) for %s', len(files), user_id)
+    except Exception as e:
+        log.warning('save_garth_tokens failed for %s: %s', user_id, e)
+
+
+def load_garth_client(creds: dict) -> Optional[Garmin]:
+    """
+    Try to restore a Garmin client from stored OAuth tokens.
+    garth auto-refreshes an expired access_token using the refresh_token,
+    so this works for hours-to-days without requiring a new full login.
+    Returns None if tokens are missing, invalid, or unrestorable.
+    """
+    enc = creds.get('garmin_tokens_enc')
+    if not enc:
+        return None
+    try:
+        files = json.loads(decrypt(enc))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for fname, content in files.items():
+                with open(os.path.join(tmpdir, fname), 'w') as f:
+                    f.write(content)
+            client = Garmin()
+            client.garth.load(tmpdir)
+            # Quick test — also triggers token refresh if access_token expired
+            client.get_user_profile()
+            log.info('Restored Garmin session from stored tokens')
+            return client
+    except Exception as e:
+        log.info('Token restore failed (will fall back to credential login): %s', e)
+        return None
 
 
 def start_garmin_login(user_id: str, email: str, password: str) -> Dict[str, Any]:
@@ -86,7 +139,7 @@ def start_garmin_login(user_id: str, email: str, password: str) -> Dict[str, Any
     response returns quickly and the user sees the prompt right away.
 
     Returns one of:
-      {'status': 'connected'}
+      {'status': 'connected', 'client': <Garmin>}
       {'status': 'mfa_required'}
       {'status': 'error', 'error': str}
     """
@@ -201,6 +254,7 @@ def connect():
 
     try:
         save_credentials(user_id, email, password)
+        save_garth_tokens(outcome['client'], user_id)
     except Exception as e:
         return jsonify({'error': f'Connected but DB write failed: {e}'}), 500
 
@@ -252,6 +306,7 @@ def connect_mfa():
 
     try:
         save_credentials(user_id, email, password)
+        save_garth_tokens(pending['client'], user_id)
     except Exception as e:
         log.error('DB write failed for %s: %s', user_id, e)
         return jsonify({'error': f'Auth succeeded but DB write failed: {e}'}), 500
@@ -264,6 +319,8 @@ def connect_mfa():
 def sync():
     """
     Fetch the latest Garmin activity for a specific session date.
+    Tries stored OAuth tokens first (no re-login needed).
+    Falls back to credential login only if tokens are missing or invalid.
     Body: { user_id, session_date }  (YYYY-MM-DD)
     """
     if not check_auth():
@@ -285,17 +342,23 @@ def sync():
     if not creds or not creds.get('sync_enabled'):
         return jsonify({'error': 'No Garmin credentials — connect Garmin in your profile first'}), 404
 
-    email    = creds['garmin_email']
-    enc_pass = creds.get('garmin_password_enc')
-    if not enc_pass:
-        return jsonify({'error': 'Missing encrypted password — please reconnect Garmin'}), 500
+    # Try token-based restore first (avoids full re-login / MFA prompt)
+    client = load_garth_client(creds)
 
-    try:
-        password = decrypt(enc_pass)
-        client   = Garmin(email=email, password=password)
-        client.login()
-    except Exception as e:
-        return jsonify({'error': f'Garmin authentication failed: {e}'}), 500
+    if not client:
+        # Fall back to credential login
+        email    = creds.get('garmin_email', '')
+        enc_pass = creds.get('garmin_password_enc')
+        if not enc_pass:
+            return jsonify({'error': 'Missing credentials — please reconnect Garmin in your profile'}), 500
+        try:
+            password = decrypt(enc_pass)
+            client   = Garmin(email=email, password=password)
+            client.login()
+            # Cache the new tokens for next time
+            save_garth_tokens(client, user_id)
+        except Exception as e:
+            return jsonify({'error': f'Garmin authentication failed: {e}'}), 500
 
     try:
         sb.table('garmin_credentials').update({
@@ -372,6 +435,86 @@ def sync():
         return jsonify({'error': f'DB write failed: {e}'}), 500
 
     return jsonify({'status': 'synced', 'workout': workout})
+
+
+@app.route('/analyze-screenshot', methods=['POST'])
+def analyze_screenshot():
+    """
+    Analyze a Garmin activity screenshot using Claude vision (server-side).
+    Users never need their own API key — ANTHROPIC_API_KEY is a Railway env var.
+    Body: { image_base64: str, media_type: str }
+    Returns: { status: 'ok', data: { total_distance_km, avg_pace_sec_per_km, ... } }
+    """
+    if not check_auth():
+        return jsonify({'error': 'unauthorized'}), 401
+
+    data       = request.json or {}
+    b64_image  = data.get('image_base64', '').strip()
+    media_type = data.get('media_type', 'image/jpeg').strip()
+
+    if not b64_image:
+        return jsonify({'error': 'missing image_base64'}), 400
+
+    anthropic_key = os.environ.get('ANTHROPIC_API_KEY', '')
+    if not anthropic_key:
+        return jsonify({'error': 'Screenshot analysis not configured on server (ANTHROPIC_API_KEY missing)'}), 503
+
+    prompt = (
+        'This is a Garmin fitness activity screenshot. Extract every visible workout metric '
+        'and return ONLY a JSON object — no prose, no markdown fences.\n\n'
+        'Required format:\n'
+        '{\n'
+        '  "total_distance_km": <number or null>,\n'
+        '  "total_time_seconds": <number or null>,\n'
+        '  "avg_pace_sec_per_km": <number or null>,\n'
+        '  "avg_hr_bpm": <number or null>,\n'
+        '  "max_hr_bpm": <number or null>,\n'
+        '  "calories": <number or null>,\n'
+        '  "laps": [\n'
+        '    { "km": <lap number>, "pace_sec_per_km": <number or null>, "avg_hr": <number or null> }\n'
+        '  ]\n'
+        '}\n\n'
+        'Conversion rules:\n'
+        '- Pace MM:SS/km → total seconds (5:30 = 330, 6:15 = 375). Valid running pace is '
+        '180–900 sec/km (3:00–15:00/km). If a value labelled as pace exceeds 900 sec/km it '
+        'is almost certainly the total activity time — put it in total_time_seconds instead '
+        'and compute avg_pace_sec_per_km = total_time_seconds / total_distance_km.\n'
+        '- Time H:MM:SS or MM:SS → total seconds (28:45 = 1725, 1:02:30 = 3750)\n'
+        '- If a per-km splits table is visible, populate the laps array in order\n'
+        '- If no splits table is visible, return laps as []\n'
+        '- Use null for any value not visible in the screenshot'
+    )
+
+    try:
+        import anthropic as ant
+        ant_client = ant.Anthropic(api_key=anthropic_key)
+        response = ant_client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=1024,
+            messages=[{
+                'role': 'user',
+                'content': [
+                    {
+                        'type': 'image',
+                        'source': {
+                            'type': 'base64',
+                            'media_type': media_type,
+                            'data': b64_image,
+                        },
+                    },
+                    {'type': 'text', 'text': prompt},
+                ],
+            }],
+        )
+        text  = response.content[0].text
+        match = re.search(r'\{[\s\S]*\}', text)
+        if not match:
+            return jsonify({'error': 'No JSON in Claude response — try a clearer screenshot'}), 500
+        result = json.loads(match.group())
+        return jsonify({'status': 'ok', 'data': result})
+    except Exception as e:
+        log.error('Screenshot analysis failed: %s', e)
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/disconnect', methods=['POST'])
