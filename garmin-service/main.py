@@ -20,6 +20,7 @@ import logging
 import tempfile
 import threading
 import importlib.metadata
+import concurrent.futures
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
@@ -110,7 +111,6 @@ def load_garth_client(creds: dict) -> Optional[Garmin]:
     so this works for hours-to-days without requiring a new full login.
     Returns None if tokens are missing, invalid, or unrestorable.
     """
-    import concurrent.futures
     import garth as garth_lib
 
     enc = creds.get('garmin_tokens_enc')
@@ -129,6 +129,11 @@ def load_garth_client(creds: dict) -> Optional[Garmin]:
             loaded_garth = garth_lib.Client.load(tmpdir)
             client = Garmin()
             client.garth = loaded_garth   # replace the empty client
+            # Cap all HTTP calls at 30s so a slow Garmin API never hangs the worker
+            try:
+                client.garth.timeout = 30
+            except Exception:
+                pass
             # Validate tokens with a 30s timeout — stale/invalid tokens can cause
             # garth to hang indefinitely on the OAuth refresh, which previously
             # caused gunicorn to kill the worker and return an HTML 500 page.
@@ -381,9 +386,18 @@ def sync():
     except Exception:
         pass
 
+    def _run(fn, *args, timeout=45):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(fn, *args)
+            try:
+                return fut.result(timeout=timeout)
+            except concurrent.futures.TimeoutError:
+                raise Exception(f'Garmin API timed out after {timeout}s')
+
     try:
         date       = datetime.strptime(session_date, '%Y-%m-%d')
-        activities = client.get_activities_by_date(
+        activities = _run(
+            client.get_activities_by_date,
             date.strftime('%Y-%m-%d'),
             (date + timedelta(days=1)).strftime('%Y-%m-%d'),
         )
@@ -405,7 +419,7 @@ def sync():
     laps = []
     if activity_id:
         try:
-            splits = client.get_activity_splits(activity_id)
+            splits = _run(client.get_activity_splits, activity_id)
             laps   = laps_from_splits(splits)
         except Exception as e:
             log.warning('Could not fetch splits for %s: %s', activity_id, e)
