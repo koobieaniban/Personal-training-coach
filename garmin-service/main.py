@@ -180,8 +180,8 @@ def start_garmin_login(user_id: str, email: str, password: str) -> Dict[str, Any
     _pending_mfa[user_id] = result
     t.start()
 
-    # Wait until login finishes OR Garmin requests an MFA code (whichever is first)
-    mfa_needed.wait(timeout=60)
+    # Wait up to 90 s for login to finish OR for Garmin to request an MFA code
+    mfa_needed.wait(timeout=90)
 
     if not t.is_alive():
         _pending_mfa.pop(user_id, None)
@@ -190,11 +190,14 @@ def start_garmin_login(user_id: str, email: str, password: str) -> Dict[str, Any
         return {'status': 'connected', 'client': result['client']}
 
     if result['mfa_requested']:
-        log.info('Returning mfa_required for %s (thread still waiting)', user_id)
+        log.info('Returning mfa_required for %s (thread still waiting for code)', user_id)
         return {'status': 'mfa_required'}
 
-    _pending_mfa.pop(user_id, None)
-    return {'status': 'error', 'error': 'Garmin login timed out'}
+    # Thread is still alive but hasn't requested MFA yet — Garmin is slow.
+    # Keep the pending session so that if MFA arrives late the user can still
+    # submit the code via /connect/mfa.  Do NOT pop from _pending_mfa here.
+    log.info('Login timed out for %s but keeping session alive for late MFA', user_id)
+    return {'status': 'mfa_pending'}
 
 
 def laps_from_splits(splits_response: dict) -> list:
@@ -249,7 +252,8 @@ def connect():
     if outcome['status'] == 'error':
         return jsonify({'error': outcome['error']}), 400
 
-    if outcome['status'] == 'mfa_required':
+    if outcome['status'] in ('mfa_required', 'mfa_pending'):
+        # mfa_pending = Garmin is slow; session kept alive so user can still submit a code
         return jsonify({'status': 'mfa_required'})
 
     try:
