@@ -110,6 +110,8 @@ def load_garth_client(creds: dict) -> Optional[Garmin]:
     so this works for hours-to-days without requiring a new full login.
     Returns None if tokens are missing, invalid, or unrestorable.
     """
+    import garth as garth_lib
+
     enc = creds.get('garmin_tokens_enc')
     if not enc:
         return None
@@ -119,14 +121,19 @@ def load_garth_client(creds: dict) -> Optional[Garmin]:
             for fname, content in files.items():
                 with open(os.path.join(tmpdir, fname), 'w') as f:
                     f.write(content)
+            # garth.Client.load() is a classmethod — it returns a NEW Client
+            # with tokens loaded.  Calling it as an instance method discards
+            # the return value and leaves the client unauthenticated, which
+            # was the previous bug.
+            loaded_garth = garth_lib.Client.load(tmpdir)
             client = Garmin()
-            client.garth.load(tmpdir)
+            client.garth = loaded_garth   # replace the empty client
             # Quick test — also triggers token refresh if access_token expired
             client.get_user_profile()
             log.info('Restored Garmin session from stored tokens')
             return client
     except Exception as e:
-        log.info('Token restore failed (will fall back to credential login): %s', e)
+        log.info('Token restore failed: %s', e)
         return None
 
 
