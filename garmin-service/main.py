@@ -17,7 +17,6 @@ import re
 import json
 import time
 import logging
-import tempfile
 import threading
 import importlib.metadata
 import concurrent.futures
@@ -81,70 +80,47 @@ def save_credentials(user_id: str, email: str, password: str):
     }, on_conflict='user_id').execute()
 
 
-def save_garth_tokens(client: Garmin, user_id: str):
-    """Persist garth OAuth tokens to Supabase after a successful login."""
+def save_garmin_tokens(garmin: Garmin, user_id: str):
+    """Persist DI tokens to Supabase after a successful login.
+
+    garminconnect 0.3+ no longer uses garth — tokens are a simple JSON object
+    with di_token, di_refresh_token, di_client_id, serialised via client.dumps().
+    """
     try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            client.garth.dump(tmpdir)
-            files = {}
-            for fname in os.listdir(tmpdir):
-                fpath = os.path.join(tmpdir, fname)
-                if os.path.isfile(fpath):
-                    with open(fpath) as f:
-                        files[fname] = f.read()
-            if not files:
-                log.warning('No garth token files found for %s', user_id)
-                return
-            sb.table('garmin_credentials').update({
-                'garmin_tokens_enc': encrypt(json.dumps(files)),
-                'updated_at':        datetime.utcnow().isoformat(),
-            }).eq('user_id', user_id).execute()
-            log.info('Saved garth tokens (%d files) for %s', len(files), user_id)
+        token_json = garmin.client.dumps()
+        sb.table('garmin_credentials').update({
+            'garmin_tokens_enc': encrypt(token_json),
+            'updated_at':        datetime.utcnow().isoformat(),
+        }).eq('user_id', user_id).execute()
+        log.info('Saved garmin DI tokens for %s', user_id)
     except Exception as e:
-        log.warning('save_garth_tokens failed for %s: %s', user_id, e)
+        log.warning('save_garmin_tokens failed for %s: %s', user_id, e)
 
 
-def load_garth_client(creds: dict) -> Optional[Garmin]:
+def load_garmin_client(creds: dict) -> Optional[Garmin]:
     """
-    Try to restore a Garmin client from stored OAuth tokens.
-    garth auto-refreshes an expired access_token using the refresh_token,
-    so this works for hours-to-days without requiring a new full login.
-    Returns None if tokens are missing, invalid, or unrestorable.
+    Try to restore a Garmin client from stored DI tokens.
+    garminconnect 0.3+ supports Garmin.login(tokenstore=<json_str>) to restore
+    a session without re-authenticating. The library auto-refreshes an expiring
+    DI token using the refresh_token, so this works without requiring a new login.
+    Returns None if tokens are missing, invalid, or expired.
     """
-    import garth as garth_lib
-
     enc = creds.get('garmin_tokens_enc')
     if not enc:
         return None
     try:
-        files = json.loads(decrypt(enc))
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for fname, content in files.items():
-                with open(os.path.join(tmpdir, fname), 'w') as f:
-                    f.write(content)
-            # garth.Client.load() is a classmethod — it returns a NEW Client
-            # with tokens loaded.  Calling it as an instance method discards
-            # the return value and leaves the client unauthenticated, which
-            # was the previous bug.
-            loaded_garth = garth_lib.Client.load(tmpdir)
-            client = Garmin()
-            client.garth = loaded_garth   # replace the empty client
-            # Cap all HTTP calls at 30s so a slow Garmin API never hangs the worker
+        token_json = decrypt(enc)
+        garmin = Garmin()
+        # Pass token JSON directly — login() detects len>512 → calls client.loads()
+        # then proactively refreshes if the token is about to expire.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(garmin.login, token_json)
             try:
-                client.garth.timeout = 30
-            except Exception:
-                pass
-            # Validate tokens with a 30s timeout — stale/invalid tokens can cause
-            # garth to hang indefinitely on the OAuth refresh, which previously
-            # caused gunicorn to kill the worker and return an HTML 500 page.
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                fut = ex.submit(client.get_user_profile)
-                try:
-                    fut.result(timeout=30)
-                except concurrent.futures.TimeoutError:
-                    raise Exception('Garmin API timed out during token validation')
-            log.info('Restored Garmin session from stored tokens')
-            return client
+                fut.result(timeout=30)
+            except concurrent.futures.TimeoutError:
+                raise Exception('Garmin API timed out during token restore')
+        log.info('Restored Garmin session from stored DI tokens')
+        return garmin
     except Exception as e:
         log.info('Token restore failed: %s', e)
         return None
@@ -281,7 +257,7 @@ def connect():
     except Exception as e:
         return jsonify({'error': f'Connected but credential save failed: {e}'}), 500
 
-    save_garth_tokens(outcome['client'], user_id)  # best-effort; logs on failure
+    save_garmin_tokens(outcome['client'], user_id)  # best-effort; logs on failure
 
     log.info('Garmin connected (no MFA) for %s', user_id)
     return jsonify({'status': 'connected', 'email': email})
@@ -335,7 +311,7 @@ def connect_mfa():
         log.error('Credential save failed for %s: %s', user_id, e)
         return jsonify({'error': f'Auth succeeded but credential save failed: {e}'}), 500
 
-    save_garth_tokens(pending['client'], user_id)  # best-effort; logs on failure
+    save_garmin_tokens(pending['client'], user_id)  # best-effort; logs on failure
 
     log.info('Garmin MFA complete for %s', user_id)
     return jsonify({'status': 'connected', 'email': email})
@@ -369,7 +345,7 @@ def sync():
         return jsonify({'error': 'No Garmin credentials — connect Garmin in your profile first'}), 404
 
     # Try token-based restore first (avoids full re-login / MFA prompt)
-    client = load_garth_client(creds)
+    client = load_garmin_client(creds)
 
     if not client:
         # No valid tokens — credential-only login will fail if Garmin requires MFA.
