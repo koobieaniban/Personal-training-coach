@@ -526,6 +526,15 @@ function blendFactor(weekNum, totalWeeks) {
   return Math.min(1, (weekNum - 1) / Math.max(1, peakEndWeek - 1));
 }
 
+function runVolumeFactor(weekNum, totalWeeks) {
+  // Per-session volume scaling: with a long runway, start lighter and build to
+  // full session volume so the plan is genuinely less demanding early. Short
+  // plans (≤8 wks) keep full volume from the start — there's no time to ease in.
+  if (totalWeeks <= 8) return 1;
+  const rampWeeks = Math.max(2, Math.round(totalWeeks * 0.6));
+  return Math.min(1, 0.8 + 0.2 * (weekNum - 1) / (rampWeeks - 1));
+}
+
 function secToMMSS(sec) {
   if (!sec || sec <= 0) return '0:00';
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -589,7 +598,7 @@ function buildRunningSessionMap(profile) {
 
     const weekSessions = isRaceWk
       ? raceWeekSessions(dist, goalTimeSec)
-      : phaseSessions(phase, w + 1, distKm, trainingDays.length);
+      : phaseSessions(phase, w + 1, distKm, trainingDays.length, runVolumeFactor(w + 1, totalWeeks));
 
     // Find this week's training dates
     const weekStart = new Date(planStart.getTime() + w * 7 * 86400000);
@@ -609,9 +618,10 @@ function buildRunningSessionMap(profile) {
   return map;
 }
 
-function phaseSessions(phase, weekNum, dist, numDays) {
+function phaseSessions(phase, weekNum, dist, numDays, volFactor) {
   numDays = numDays || 3;
   const distKm = dist || 10;
+  const vf = volFactor || 1;
   const longDur = { base: 55, build: 70, peak: 85, taper: 40 };
   const dur     = longDur[phase] || 55;
   const qualityType  = phase === 'peak' ? 'interval' : 'tempo';
@@ -619,7 +629,10 @@ function phaseSessions(phase, weekNum, dist, numDays) {
   const qualityZone  = phase === 'peak' ? 'Z4–5' : 'Z4';
   const qualityPace  = phase === 'peak' ? 'intervals' : 'tempo';
 
-  const d = (subtype) => runSessionDistKm(subtype, phase, distKm);
+  const d = (subtype) => {
+    const base = runSessionDistKm(subtype, phase, distKm);
+    return base === 0 ? 0 : Math.max(3, Math.round(base * vf));
+  };
 
   const easy = { type:'run', subtype:'easy', title:'Easy Run',
     subtitle:`${d('easy')} km · conversational pace · Z2`,
@@ -643,10 +656,11 @@ function phaseSessions(phase, weekNum, dist, numDays) {
     ]
   };
 
+  const recKm = Math.max(3, Math.round(d('easy') * 0.7));
   const recovery = { type:'run', subtype:'easy', title:'Recovery Run',
-    subtitle:`${Math.round(d('easy') * 0.7)} km · very easy · Z1–Z2 · flush the legs`,
+    subtitle:`${recKm} km · very easy · Z1–Z2 · flush the legs`,
     icon:'🏃', paceRef:'easy', rest:false, warmup: RUN_WARMUPS.easy,
-    distKm: Math.round(d('easy') * 0.7) };
+    distKm: recKm };
 
   if (numDays <= 3) return [easy, quality, longRun];
   if (numDays === 4) return [easy, quality, strength, longRun];
@@ -669,8 +683,8 @@ function raceWeekSessions(dist, goalTimeSec) {
   ];
 }
 
-// ── SIM_STATIONS and SIM_DISTANCES are now embedded directly in SESSION_TEMPLATE_DATA
-// as .stations and .distances properties on each sim session.
+// Sim station lists/distances are attached to each generated sim session
+// (buildHyroxPlan) as .stations, using the STATION_* tables above.
 // Use SESSIONS[dateStr]?.stations and SESSIONS[dateStr]?.distances instead.
 
 const STATION_LABELS = {
@@ -985,409 +999,299 @@ function hybridSuggest(ex, dateStr) {
   return { weight: last.weight, reps: Math.min(ex.repMax, last.reps + 1), hint: 'Same weight — chase 1–2 more reps.' };
 }
 
-// ── Session templates ─────────────────────────────────────────────────────────
-// planDay = days offset from plan_start (0-indexed).
-// buildSessionMap() turns these into date-keyed SESSIONS based on userProfile.plan_start.
-// Existing users whose plan_start matches the baked-in dates get identical keys — zero data loss.
-const SESSION_TEMPLATE_DATA = {
-  0: { rest: true, restMsg: 'Plan starts tomorrow. Prep your gym kit and read through Week 1.' },
-  1: {
-    week: 1, type: 'strength', icon: '💪', title: 'Strength — Gym Introduction',
-    subtitle: 'Knee Block Phase 1 · Posterior chain · SkiErg intro · lighter loads',
-    kneePhase: 1,
-    blocks: [
-      { title: 'Warm-up (8 min)', items: ['500m SkiErg easy — focus on hip hinge pattern, arms fully extend overhead before pulling'] },
-      { title: 'Knee Block — Phase 1 (12 min, 3 rounds)', knee: true, items: ['TKE (band) ×20 each leg · Full lockout, 1s pause', 'Short Arc Quad ×15 each · 30° → full lock, 2s hold', 'Straight Leg Raise ×15 each · 3s lower', 'Clamshell (band) ×20 each side · keep hips stacked', 'Single-leg Balance 45s each · eyes open', 'Heel Slide ×15 each · slide to comfortable end range only'] },
-      { title: 'Block A — Posterior Chain (3 rounds, 60s rest)', items: ['Back Squat 3×10 @ 30–40kg · focus on depth and control, not load', 'Romanian Deadlift 3×10 @ 40–50kg · hinge at hip, proud chest throughout', 'Step-up to box 3×10 each leg @ bodyweight → +5–8kg DBs if easy', 'Copenhagen Plank 3×20s each · rest top foot on bench'] },
-      { title: 'Block B — Station Intro (3 rounds, 90s rest)', items: ['SkiErg 500m @ easy effort · no time pressure — build the pattern', 'Farmers Carry 50m @ 2×16–20kg · shoulders packed, no side-lean', 'Hollow Body Hold 30s · lower back flat, arms overhead'] },
-      { title: 'Station Practice', items: ['Burpee Broad Jumps: 4 sets × 10 · chest-to-floor → explosive jump forward → soft-knee landing'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol (8 min)'] },
-    ],
-    note: 'Introductory loads this week — master the movement patterns before adding weight in Week 2.',
-  },
-  3: {
-    week: 1, type: 'run', icon: '🏃', title: 'Run A — Reintroduction', distKm: 3,
-    subtitle: 'First run back. HR governs everything.',
-    paceRef: 'easy', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['5 min brisk walk', 'Knee activation (5 min): clamshells ×15 each · TKE ×15 each · glute bridge ×20 · single-leg balance 30s each · lateral band walk ×10 each dir'] },
-      { title: 'Main', items: ['3km easy @ [EASY] — HR 132–146 bpm throughout', 'If HR stays below 146: 4 × 100m strides @ ~5:00/km, walk back full recovery', 'STOP if sharp knee pain (dull ache is OK)'] },
-      { title: 'Cool-down', items: ['Post-session knee recovery (8 min): quad · hamstring · hip flexor · IT band foam roll · calf stretch'] },
-    ],
-    note: 'No intervals this week. Your first run back is pure aerobic reintroduction.',
-  },
-  5: {
-    week: 1, type: 'run', icon: '🏃', title: 'Run B — Easy Aerobic', distKm: 4,
-    subtitle: 'HR-governed easy run. Build time on feet.',
-    paceRef: 'easy', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['5 min walk', 'Knee activation (5 min) · same as your first run'] },
-      { title: 'Main', items: ['4km continuous @ [EASY] · HR 132–146 bpm', 'If HR stayed in Z2: 4 × 200m @ 5:20/km, 90s rest', 'HR is the governor — not your legs\' feel'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol (8 min): hip flexor lunge 90s each · IT band foam roll 60s each · calf stretch on step 60s each'] },
-    ],
-  },
-  6: {
-    week: 1, type: 'sim', icon: '🏋️', title: 'Combined Intro — Gym',
-    stations: ['skierg','burpee','farmers'],
-    distances: { run_m: 500, stations: { skierg: 500, burpee: 40, farmers: 50 } },
-    subtitle: 'First time with actual gym kit. Run → Station habit.',
-    paceRef: 'easy', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up (15 min)', items: ['Easy 1km jog', 'Knee activation (5 min)', 'Dynamic drills: leg swings · hip circles · A-skips × 2×20m'] },
-      { title: 'Main — 3 rounds, 3 min rest · transition ≤30s', items: ['Round 1: 500m @ 5:40/km → SkiErg 500m', 'Round 2: 500m @ 5:40/km → 12 Burpee Broad Jumps', 'Round 3: 500m @ 5:40/km → Farmers Carry 50m @ 2×20kg'] },
-      { title: 'Cool-down', items: ['Easy 500m jog · full knee recovery protocol'] },
-    ],
-    note: 'Technique focus, not pace. First time on a real SkiErg — learn the hinge and arm extension. The run→station habit is what matters this week.',
-  },
-  8: {
-    week: 2, type: 'strength', icon: '💪', title: 'Strength + Stations',
-    subtitle: 'Knee Block Phase 1 · Sled intro · Rowing intro',
-    kneePhase: 1,
-    blocks: [
-      { title: 'Warm-up', items: ['500m SkiErg easy'] },
-      { title: 'Knee Block — Phase 1 (12 min, 3 rounds)', knee: true, items: ['TKE (band) ×20 each leg · Full lockout, 1s pause', 'Short Arc Quad ×15 each · 30° → full lock, 2s hold', 'Straight Leg Raise ×15 each · 3s lower', 'Clamshell (band) ×20 each side', 'Single-leg Balance 45s each', 'Heel Slide ×15 each'] },
-      { title: 'Block A — Posterior Chain (4 rounds, 75s rest)', items: ['Back Squat 4×8 @ 40–50kg', 'Barbell Hip Thrust 4×12 @ 50–60kg', 'Walking Lunges 4×20 steps (bodyweight → +5kg DBs)', 'DB Bent-over Row 3×10 each arm @ 20–24kg'] },
-      { title: 'Block B — Hyrox Stations (3 rounds, 2 min rest)', items: ['SkiErg 500m · build pace each round', 'Wall Balls 20 reps @ 6kg to 3.05m target', 'Farmers Carry 100m @ 2×20kg'] },
-      { title: 'Sled Intro', items: ['3 × 50m sled push @ empty sled · low hips, drive with legs', '3 × 50m sled pull @ empty sled · hand-over-hand rope technique'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  9: {
-    week: 2, type: 'recovery', icon: '🧘', title: 'Recovery — Full Body Flush',
-    subtitle: '20 min. Mobility + soft tissue release.',
-    blocks: [
-      { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 60s each · IT band 60s each · calves 60s each · upper back 60s', 'Lacrosse ball or tennis ball: glutes 60s each side'] },
-      { title: 'Mobility (10 min)', items: ['Hip flexor lunge stretch 90s each side', 'Pigeon pose 60s each side', 'Doorway chest stretch 60s', 'Cat-cow 10 reps · childs pose 60s'] },
-    ],
-    note: 'No intensity. This is how you absorb your last sim session.',
-  },
-  10: {
-    week: 2, type: 'run', icon: '🏃', title: 'Tempo Run — Introduction', distKm: 3,
-    subtitle: 'First proper tempo effort.',
-    paceRef: 'tempo', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation (5 min) · 10 min easy jog'] },
-      { title: 'Main', items: ['3 × 1km @ [TEMPO] · 2 min standing rest between', 'Feel: comfortably hard — 2–3 words but not a conversation', '1km cool-down easy jog'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  11: {
-    week: 2, type: 'recovery', icon: '🧘', title: 'Recovery — Running Muscles',
-    subtitle: '20 min. Focus on what runs use.',
-    blocks: [
-      { title: 'Soft tissue (8 min)', items: ['Foam roll: hamstrings 60s each · calves 60s each · hip flexors 60s each'] },
-      { title: 'Mobility (12 min)', items: ['Standing quad stretch 60s each', 'Standing hamstring stretch 60s each', 'Hip flexor lunge 90s each', 'Calf stretch on step 60s each', 'Ankle circles 30s each'] },
-    ],
-    note: 'Sets up your legs for the week\'s strength and hard-run sessions.',
-  },
-  12: {
-    week: 2, type: 'run', icon: '🏃', title: 'Easy Aerobic Run', distKm: 5,
-    subtitle: 'HR-governed. Build time on feet.',
-    paceRef: 'easy', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['5 min walk · Knee activation (5 min) · Dynamic drills'] },
-      { title: 'Main', items: ['5km continuous @ [EASY] · HR 132–146 bpm throughout', 'If HR stays in Z2: add 4 × 100m strides at the end, walk back full recovery'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  13: {
-    week: 2, type: 'sim', icon: '🔥', title: 'Simulation — Short (4 Rounds)',
-    stations: ['row','sled_push','skierg','wallball'],
-    distances: { run_m: 1000, stations: { row: 500, sled_push: 50, skierg: 500, wallball: 25 } },
-    subtitle: '4 rounds, one station each. First sled work.',
-    paceRef: 'easy', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation (5 min) · 10 min easy jog'] },
-      { title: 'Main — 4 rounds, 3 min rest between', items: ['Round 1: 1km @ 5:40/km → Row 500m', 'Round 2: 1km @ 5:40/km → Sled Push 50m (empty sled)', 'Round 3: 1km @ 5:40/km → SkiErg 500m', 'Round 4: 1km @ 5:40/km → Wall Balls 25 reps (6kg)'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-    note: 'First sled session — focus entirely on technique. Hip hinge, drive with legs, stay low.',
-  },
-  15: {
-    week: 3, type: 'strength', icon: '💪', title: 'Strength + Station Mastery',
-    subtitle: 'Knee Block Phase 2 · Loaded sleds · Station technique drills',
-    kneePhase: 2,
-    blocks: [
-      { title: 'Warm-up — Station Technique (20 min)', items: ['SkiErg rhythm: 4 × 500m @ conversational pace · 90s rest — full hip hinge, arms fully overhead before pull', 'Wall Ball metronome: phone to 42 BPM · 3 × 15 reps in time · squat below parallel every rep', 'Sled walkthrough: 2 × 50m push + 2 × 50m pull @ race weight — low hips, short fast steps'] },
-      { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['TKE (heavier band) ×20 each leg', 'Step-Down (eccentric) ×12 each leg · 20–30cm box, 3–4 count lower', 'Single-leg Glute Bridge ×12 each · keep hips level', 'Nordic Hamstring Curl (assisted) ×8 · 3–4 count lower, assist up', 'Lateral Band Walk ×20 steps each direction', 'Wall Sit 45s', 'Single-leg Calf Raise ×15 each · 3 count eccentric'] },
-      { title: 'Block A — Strength (3 rounds, 90s rest)', items: ['Back Squat 3×6 @ 60–70% 1RM', 'Romanian Deadlift 3×8 @ 60–70kg', 'Single-leg Step-up + 10kg DBs 3×8 each', 'Barbell Hip Thrust 3×10 @ 70kg', 'Barbell Bent-over Row 3×10 @ 50–60kg'] },
-      { title: 'Block B — Hyrox Circuit (2 rounds, 5 min rest)', items: ['SkiErg 500m', 'Sled Push 50m @ 80–100kg (build toward race weight 152kg)', 'Sled Pull 50m @ 60–75kg (build toward race weight 103kg)', 'Burpee Broad Jumps 40m (~20 jumps)'] },
-      { title: 'Block C — Lunge → Wall Ball Primer (2 rounds, 3 min rest)', items: ['Sandbag Lunges 20m @ 20kg — straight into:', 'Wall Balls 20 reps @ 6kg · first taste of this quad-double'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  16: {
-    week: 3, type: 'recovery', icon: '🧘', title: 'Recovery — Post-Sim Flush',
-    subtitle: '20 min. Soft tissue and hip mobility.',
-    blocks: [
-      { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 60s each · IT band 60s each · calves 60s each · lats 60s'] },
-      { title: 'Mobility (10 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Thoracic rotation 10 reps each side', 'Childs pose 60s'] },
-    ],
-  },
-  17: {
-    week: 3, type: 'run', icon: '🏃', title: 'Intervals — 1km Repeats at Race Pace', distKm: 6,
-    subtitle: 'First time hitting 5:30/km target.',
-    paceRef: 'intervals', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation (5 min) · 1km easy jog · drills'] },
-      { title: 'Main', items: ['6 × 1km @ [INTERVALS] (race pace) · 90s rest between', 'Benchmark session — note actual pace and how each km felt', 'If you can\'t hold [INTERVALS] yet: run best sustainable effort and log it'] },
-      { title: 'Cool-down', items: ['Easy 1km jog · Knee recovery protocol'] },
-    ],
-  },
-  19: {
-    week: 3, type: 'run', icon: '🏃', title: 'Easy Aerobic Run', distKm: 5,
-    subtitle: 'HR-governed. Week 3 aerobic base.',
-    paceRef: 'easy', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation (5 min) · dynamic drills'] },
-      { title: 'Main', items: ['5km @ [EASY] · HR 132–146 bpm', '4 × 100m strides at the end if HR stayed in zone'] },
-      { title: 'Cool-down', items: ['Easy 1km jog · Knee recovery protocol'] },
-    ],
-  },
-  20: {
-    week: 3, type: 'sim', icon: '🔥', title: 'Extended Simulation — 6 Rounds',
-    stations: ['skierg','sled_push','sled_pull','burpee','row','farmers'],
-    distances: { run_m: 1000, stations: { skierg: 500, sled_push: 50, sled_pull: 50, burpee: 40, row: 500, farmers: 100 } },
-    subtitle: 'Loaded sleds · run→station transitions',
-    paceRef: 'intervals', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
-      { title: 'Main — 6 rounds, 2–3 min rest · move straight to station (≤30s)', items: ['R1: 1km @ [INTERVALS] → SkiErg 500m', 'R2: 1km @ [INTERVALS] → Sled Push 50m (moderate load)', 'R3: 1km @ [INTERVALS] → Sled Pull 50m (moderate load)', 'R4: 1km @ [INTERVALS] → Burpee Broad Jumps 40m', 'R5: 1km @ [INTERVALS] → Row 500m', 'R6: 1km @ [INTERVALS] → Farmers Carry 100m (2×20kg)'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  22: {
-    week: 4, type: 'strength', icon: '💪', title: 'Strength + Full Stations',
-    subtitle: 'Knee Block Phase 2 · Full Hyrox circuit × 2',
-    kneePhase: 2,
-    blocks: [
-      { title: 'Warm-up', items: ['500m row easy'] },
-      { title: 'Knee Block — Phase 2 (15 min, 3 rounds)', knee: true, items: ['This is your heaviest training week — the knee block is not optional', 'Same Phase 2 protocol · focus on step-down quality and nordic curl'] },
-      { title: 'Block A — Strength (3 rounds)', items: ['Goblet Squat 3×10 @ 24kg KB', 'Romanian Deadlift 3×8 @ 70–75kg', 'Barbell Hip Thrust 3×10 @ 80kg', 'Copenhagen Plank 3×25s each', 'Barbell Bent-over Row 3×10 @ 55–65kg'] },
-      { title: 'Block B — Full Hyrox Circuit (2 rounds, 6 min rest)', items: ['SkiErg 1000m', 'Sled Push 50m @ 120–140kg (target 152kg)', 'Sled Pull 50m @ 85–95kg (target 103kg)', 'Burpee Broad Jumps 80m (full race distance)', 'Row 1000m @ 2:00–2:05/500m split', 'Farmers Carry 200m @ 2×24kg', 'Sandbag Lunges 100m @ 20kg', 'Wall Balls 50 reps @ 6kg'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  23: {
-    week: 4, type: 'recovery', icon: '🧘', title: 'Recovery — Post-Sim Flush',
-    subtitle: '20 min. Peak week starts fresh.',
-    blocks: [
-      { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 60s each · IT band 60s each · calves 60s each · upper back 60s'] },
-      { title: 'Mobility (10 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Thoracic rotation 10 reps each side', 'Childs pose 60s'] },
-    ],
-    note: 'This week is your peak training week. Recovery today matters.',
-  },
-  24: {
-    week: 4, type: 'run', icon: '🏃', title: 'Tempo + Row Intervals', distKm: 4,
-    subtitle: 'First standalone rowing session. Establish your race-day row pace.',
-    paceRef: 'tempo', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
-      { title: 'Run', items: ['2 × 2km @ [TEMPO] · 3 min rest', '4 × 200m strides @ 4:30/km, walk back'] },
-      { title: 'Row (5 min after run)', items: ['4 × 1000m @ 2:00–2:05/500m split · 3 min rest between', 'Controlled 7–8/10 effort — goal: find your sustainable race-day row pace.'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  25: {
-    week: 4, type: 'recovery', icon: '🧘', title: 'Recovery — Full Body Prep',
-    subtitle: '20 min. Set up for the week\'s big strength session.',
-    blocks: [
-      { title: 'Soft tissue (8 min)', items: ['Foam roll: quads 60s each · hamstrings 60s each · calves 60s each · glutes 60s each'] },
-      { title: 'Mobility (12 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Doorway chest stretch 60s', 'T-spine rotation 10 reps each side'] },
-    ],
-  },
-  26: {
-    week: 4, type: 'run', icon: '🏃', title: 'Easy Aerobic Run', distKm: 5,
-    subtitle: 'HR-governed easy run. Active recovery.',
-    paceRef: 'easy', kneePhase: 'activation',
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation'] },
-      { title: 'Main', items: ['Easy 5km @ [EASY] — genuinely easy, legs should feel good after', '4 × 100m strides at the end'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol + foam roll'] },
-    ],
-  },
-  27: {
-    week: 4, type: 'sim', icon: '🔥', title: 'FULL HYROX SIMULATION 🏁',
-    stations: ['skierg','sled_push','sled_pull','burpee','row','farmers','lunges','wallball'],
-    distances: { run_m: 1000, stations: { skierg: 1000, sled_push: 50, sled_pull: 50, burpee: 80, row: 1000, farmers: 200, lunges: 100, wallball: 100 } },
-    subtitle: 'Treat this like race day. All 8 runs + all 8 stations.',
-    paceRef: 'intervals', kneePhase: 'activation',
-    blocks: [
-      { title: 'Pre-session (30 min before)', items: ['Eat a normal pre-race breakfast', 'Arrive early, full 15 min warm-up'] },
-      { title: 'Warm-up (15 min)', items: ['Easy 1km jog · 500m SkiErg easy', 'Knee activation · Dynamic drills', '2 × 100m Burpee Broad Jump practice'] },
-      { title: 'Full Simulation — 8 rounds', items: ['R1: 1km @ [INTERVALS] → SkiErg 1000m', 'R2: 1km @ [INTERVALS] → Sled Push 50m (100–152kg)', 'R3: 1km @ [INTERVALS] → Sled Pull 50m (75–103kg)', 'R4: 1km @ [INTERVALS] → Burpee Broad Jumps 80m', 'R5: 1km @ [INTERVALS] → Row 1000m', 'R6: 1km @ [INTERVALS] → Farmers Carry 200m (2×24kg)', 'R7: 1km @ [INTERVALS] → Sandbag Lunges 100m (20kg)', 'R8: 1km @ [INTERVALS] → Wall Balls 100 reps (6kg)', 'Optional 2–3 min rest after round 4'] },
-      { title: 'Post-simulation', items: ['RECORD YOUR SPLITS — note pace + how each station felt 1–10', 'Cool-down walk 5 min · full knee recovery protocol'] },
-    ],
-    note: 'This data tells us where to focus in Week 5. Log everything in the feedback form.',
-  },
-  29: {
-    week: 5, type: 'strength', icon: '💪', title: 'Strength + Stations (Moderate)',
-    subtitle: 'Knee Block Phase 3 · Reduced volume, quality focus',
-    kneePhase: 3, deload: true,
-    blocks: [
-      { title: 'Warm-up', items: ['500m SkiErg easy'] },
-      { title: 'Knee Block — Phase 3 (16 min, 3 rounds)', knee: true, items: ['TKE (heaviest band) ×20 each leg', 'Single-leg Box Squat to 40–50cm box ×10 each · 3-count descent', 'Step-Down increased height (35–40cm) ×12 each', 'Nordic Hamstring Curl (less assistance) ×8', 'Spanish Squat (band) 60s', 'Reverse Lunge with DBs ×10 each', 'Single-leg Calf Raise (weighted) ×12 each'] },
-      { title: 'Block A — Strength (3 rounds, reduced)', items: ['Back Squat 3×8 @ 65% of Week 4', 'Barbell Hip Thrust 3×10 @ 75kg', 'Walking Lunges 3×16 (light DBs or bodyweight)'] },
-      { title: 'Block B — Stations (2 rounds, 5 min rest)', items: ['SkiErg 1000m', 'Wall Balls 75 reps (6kg)', 'Farmers Carry 200m (2×24kg)', 'Sled Push + Pull 50m each (race weight)'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  30: {
-    week: 5, type: 'recovery', icon: '🧘', title: 'Recovery — Most Important Session This Week',
-    deload: true,
-    subtitle: '20 min. You just did your biggest week. Absorb it.',
-    blocks: [
-      { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 90s each · IT band 90s each · calves 60s each · upper back 60s', 'Lacrosse ball: glutes 90s each side'] },
-      { title: 'Mobility (10 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 90s each', 'Supine spinal twist 60s each', 'Legs-up-the-wall 5 min (optional — great for recovery)'] },
-    ],
-    note: 'Do not train today. This session is the adaptation.',
-  },
-  31: {
-    week: 5, type: 'run', icon: '🏃', title: 'Race Pace Run — 8 × 1km', distKm: 8,
-    subtitle: '5s faster than race pace. Build a buffer.',
-    paceRef: 'intervals', kneePhase: 'activation', deload: true,
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
-      { title: 'Main', items: ['8 × 1km @ [INTERVALS] · 60s rest only (simulates race-day run intervals)', 'This is the closest rep of your 8 race runs', '1km easy cool-down jog'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  32: {
-    week: 5, type: 'emom', icon: '⏱️', title: 'Compromised Run EMOM — Benchmark',
-    subtitle: 'JK Hybrid signature benchmark. 8 rounds of 3 min. Run + burpees under fatigue.',
-    deload: false,
-    blocks: [
-      { title: 'Warm-up (10 min)', items: ['1km easy jog · Knee activation · 2 × 100m strides'] },
-      { title: 'Benchmark — Every 3 min for 24 min (8 rounds)', items: ['400m run as fast as you can → max burpees until the 3-minute mark', 'Rest is whatever\'s left after burpees. Aim to finish 400m in ~90–100s.', 'Score = total burpees across all 8 rounds', 'Record: round-by-round run time + burpee count'] },
-      { title: 'Target scores', items: ['Beginner: 80–120 burpees total', 'Intermediate: 120–180 burpees total', 'Advanced: 180+ burpees · JK PB: 247'] },
-      { title: 'Cool-down', items: ['Easy 5 min walk · Knee recovery protocol'] },
-    ],
-    note: 'This benchmark repeats in your final prep week. The score tracks your compromised-run fitness — the most Hyrox-specific quality you can build.',
-  },
-  33: {
-    week: 5, type: 'run', icon: '🏃', title: 'Easy Aerobic Run', distKm: 5,
-    subtitle: '5km easy + strides. Legs should feel alive by the end.',
-    paceRef: 'easy', kneePhase: 'activation', deload: true,
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation · 10 min easy walk/jog'] },
-      { title: 'Main', items: ['5km easy @ [EASY]', '6 × 100m strides @ 4:30/km · walk back full recovery'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  34: {
-    week: 5, type: 'sim', icon: '🔥', title: 'Mini Simulation — 6 Rounds',
-    subtitle: 'Race intensity, reduced volume.',
-    paceRef: 'intervals', kneePhase: 'activation', deload: true,
-    stations: ['skierg','sled_push','burpee','row','farmers','wallball'],
-    distances: { run_m: 1000, stations: { skierg: 500, sled_push: 50, burpee: 40, row: 500, farmers: 100, wallball: 50 } },
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation · 10 min easy'] },
-      { title: 'Main — 6 rounds, 2 min rest', items: ['R1: 1km @ [INTERVALS] → SkiErg 500m', 'R2: 1km @ [INTERVALS] → Sled Push 50m (race weight)', 'R3: 1km @ [INTERVALS] → Burpee Broad Jumps 40m', 'R4: 1km @ [INTERVALS] → Row 500m', 'R5: 1km @ [INTERVALS] → Farmers Carry 100m (2×24kg)', 'R6: 1km @ [INTERVALS] → Wall Balls 50 reps'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-  },
-  36: {
-    week: 6, type: 'strength', icon: '💪', title: 'Light Touch Gym — Transitions & Sharpness',
-    subtitle: 'Knee Block Phase 3 (2 rounds only). Drill transitions. Stay sharp.',
-    kneePhase: 3, deload: true,
-    blocks: [
-      { title: 'Knee Block — Phase 3 (10 min, 2 rounds only)', knee: true, items: ['Same Phase 3 protocol · 2 rounds, not 3', 'Goal: keep the knee firing, not accumulate fatigue'] },
-      { title: 'Stations (light touch)', items: ['SkiErg 500m', 'Wall Balls 30 reps (6kg)', 'Farmers Carry 100m (2×24kg)', 'No sled, no squats'] },
-      { title: 'Transition Drills (10 min)', items: ['3 × jog 200m → straight into 10 Wall Balls → jog back (no rest at transition)', 'Simulate the first 20 seconds of each run — attack the start', 'Clean entries and exits save 3–5 sec per station in race'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-    note: 'Every set should feel easy. If it\'s hard, stop. Transitions are the hidden time-saver.',
-  },
-  37: {
-    week: 6, type: 'recovery', icon: '🧘', title: 'Recovery — Deload Week Begins',
-    subtitle: '20 min. Reduce volume, maintain sharpness. This is NOT a taper.',
-    deload: true,
-    blocks: [
-      { title: 'Soft tissue (10 min)', items: ['Foam roll: quads 60s each · IT band 60s each · calves 60s each · upper back 60s'] },
-      { title: 'Mobility (10 min)', items: ['Hip flexor lunge 90s each', 'Pigeon pose 60s each', 'Childs pose 60s', 'Legs-up-the-wall 5 min'] },
-    ],
-    note: 'Deload week begins. Stay sharp, lock in pacing and transitions. Do not add extra work.',
-  },
-  38: {
-    week: 6, type: 'run', icon: '🏃', title: 'Easy Run — Keep the Legs Moving', distKm: 3,
-    subtitle: 'Short, controlled. Nothing more.',
-    paceRef: 'easy', kneePhase: 'activation', deload: true,
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation'] },
-      { title: 'Main', items: ['3km easy @ [EASY]', '4 × 100m strides at the end'] },
-      { title: 'Cool-down', items: ['Knee recovery protocol'] },
-    ],
-    note: 'That\'s it. Do not be tempted to do more.',
-  },
-  39: {
-    week: 6, type: 'run', icon: '🏃', title: 'Sharpening Run', distKm: 5,
-    subtitle: '5 × 1km — race pace feel, short.',
-    paceRef: 'intervals', kneePhase: 'activation', deload: true,
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation · 10 min easy jog'] },
-      { title: 'Main', items: ['5 × 1km @ 5:20/km · 2 min rest between', 'Just a reminder to the legs — no heroics'] },
-      { title: 'Cool-down', items: ['Easy 1km jog · Knee recovery protocol'] },
-    ],
-    note: 'Last hard running before race day. Feel sharp, not wrecked.',
-  },
-  45: {
-    week: 7, type: 'run', icon: '🏃', title: 'Shakeout Run', distKm: 2,
-    paceRef: 'easy', kneePhase: 'activation', deload: true,
-    blocks: [
-      { title: 'Warm-up', items: ['Knee activation'] },
-      { title: 'Main', items: ['2km very easy jog', '3 × 100m at race pace (5:30/km) just to remind the legs'] },
-      { title: 'Cool-down', items: ['Light knee recovery stretches'] },
-    ],
-  },
-  48: {
-    week: 7, type: 'sim', icon: '🏆', title: 'RACE DAY',
-    subtitle: 'All of this was for today. Trust your training.',
-    blocks: [
-      { title: 'Morning protocol', items: ['Wake 2.5–3 hrs before race start', 'Breakfast: oats + banana or toast + eggs (something you\'ve practised)', 'Arrive at venue 60 min before start'] },
-      { title: 'Race warm-up (15 min before)', items: ['10 min easy jog · dynamic drills', '2 × 100m Burpee Broad Jump practice (light)', '2 × SkiErg 150m at easy effort'] },
-      { title: 'Race strategy', items: ['Runs 1–3: hold BACK — adrenaline will push you faster than 5:30', 'SkiErg: 4:00–4:30 total · long arms, full hinge', 'Sled Push (152kg): low hips, small fast steps', 'Sled Pull (103kg): smooth hand-over-hand rhythm', 'Burpee Broad Jumps: breathe on the way up, jump for distance', 'Row: 1:58–2:05/500m split — hold this no matter what', 'Farmers Carry (2×24kg): walk fast, change hands at 100m', 'Sandbag Lunges (20kg): deep lunge, drive through front heel', 'Wall Balls (100 reps): find a rhythm and stick to it — squat below parallel every rep', 'Runs 5–8: this is where the race is won'] },
-    ],
-    note: 'You\'ve done the work. The knee work, the runs, the simulations, the benchmarks. Enjoy it.',
-  },
-};
+// ── HYROX variable-length, block-periodized generator ──────────────────────────
+// Methodology: James Kelly / PRVN (compromised running, benchmark-anchored,
+// periodized blocks) layered on the HAOS 3-week-build / 1-week-deload undulation.
+// Spans plan_start → race_date (any length). Progressive overload builds the
+// athlete to hold RACE PACE over 10 km (buffer beyond race-day's 8 km). Run pace
+// ramps from the user's current 10K toward goal pace, accelerating on good
+// feedback. Weekly rhythm: Mon strength · Wed run · Fri strength+Hyrox · Sat sim;
+// +Sun run at 5 days; +Sun run & Tue strength+Hyrox at 6 days.
 
-// Dynamic session map — built from SESSION_TEMPLATE_DATA + user plan_start
-let SESSIONS = {};
-function buildSessionMap(planStartStr, raceDateStr) {
-  // Anchor the plan to the RACE DATE, not a fixed 7 weeks from plan_start:
-  // the template's final content week (race week) is aligned to the race's
-  // calendar week, so the taper lands the week before and race day sits on
-  // the exact date the user entered — wherever that falls in the calendar.
-  const race = raceDateStr ? new Date(raceDateStr + 'T00:00:00') : null;
-  const maxWeek = Math.max(...Object.values(SESSION_TEMPLATE_DATA).map(t => t.week || 1));
-  let start;
-  if (race && !isNaN(race.getTime())) {
-    const raceWeekStart = snapToSunday(race);
-    start = new Date(raceWeekStart.getTime() - (maxWeek - 1) * 7 * 86400000);
-  } else {
-    start = snapToSunday(new Date((planStartStr || DEFAULT_PLAN_START_STR) + 'T00:00:00'));
+function hyroxLoads(profile) {
+  const c = profile.race_category;
+  return (c && HYROX_CATEGORIES[c]) ? HYROX_CATEGORIES[c].weights
+    : { sled_push: 50, sled_pull: 50, farmers: 24, wallball: 6, lunges: 20 };
+}
+
+// Goal run pace (sec/km) implied by the Hyrox goal finish time:
+// total − station time − transitions, spread across the 8 race runs.
+function hyroxGoalRunPaceSec(profile) {
+  const goalSec = (profile.goal_time_min || 90) * 60;
+  const stationSec = Object.values(STATION_RACE_SEC).reduce((a, s) => a + s.t, 0);
+  const runSec = Math.max(8 * 210, goalSec - stationSec - 7 * 20); // floor 3:30/km
+  return Math.round(runSec / 8);
+}
+
+// Build a 10K-equivalent goal time so we can reuse the running pace engine
+// (easy/tempo/interval/long/race) — this is what anchors the 10 km target.
+function hyroxGoal10kSec(profile) { return hyroxGoalRunPaceSec(profile) * 10; }
+
+// Feedback-driven acceleration: if recent Hyrox sessions felt easy, push the
+// ramp faster; if hard, hold back. Returns a small progress boost in [-0.1, 0.15].
+function hyroxFeedbackBoost() {
+  // `state` is declared later in the file; the load-time bootstrap runs before
+  // it's initialised, so guard the temporal-dead-zone access.
+  let st;
+  try { st = state; } catch (_) { return 0; }
+  if (!st || !st.feedback) return 0;
+  const fb = Object.entries(st.feedback || {})
+    .filter(([d]) => SESSIONS[d] && !SESSIONS[d].rest)
+    .sort((a, b) => a[0] < b[0] ? 1 : -1)
+    .slice(0, 4)
+    .map(([, f]) => (typeof f.overall_feel === 'number' ? f.overall_feel : null))
+    .filter(v => v !== null);
+  if (!fb.length) return 0;
+  const avg = fb.reduce((a, b) => a + b, 0) / fb.length; // −2 very easy … +2 very hard
+  return Math.max(-0.1, Math.min(0.15, -avg * 0.06));
+}
+
+// scale an integer metric from a start→end value by progress (0..1)
+function hyLerp(a, b, p) { return Math.round(a + (b - a) * Math.max(0, Math.min(1, p))); }
+
+// ── Hyrox session generators (rich content, scaled by progress 0..1) ───────────
+function hyroxEasyRun(km, week, note) {
+  return { type: 'run', subtype: 'easy', week, paceRef: 'easy', distKm: km, icon: '🏃',
+    title: `Easy Aerobic Run — ${km} km`, subtitle: `${km} km · Zone 2 · HR-governed`,
+    warmup: RUN_WARMUPS.easy, rest: false,
+    note: note || 'Conversational pace. HR is the governor — build the aerobic base that lets you run compromised.' };
+}
+function hyroxLongRun(km, week) {
+  return { type: 'run', subtype: 'long', week, paceRef: 'long', distKm: km, icon: '🛤️',
+    title: `Long Aerobic Run — ${km} km`, subtitle: `${km} km · Zone 2 · durability`,
+    warmup: RUN_WARMUPS.long, rest: false,
+    note: 'Time on feet. Builds the endurance to hold race pace deep into the run — well past 8 km.' };
+}
+function hyroxQualityRun(week, reps, isRace) {
+  // isRace → race-pace 1km repeats (builds to 10 × 1km). else tempo.
+  const km = reps; // 1km reps
+  return isRace
+    ? { type: 'run', subtype: 'interval', week, paceRef: 'race', distKm: km, icon: '⚡',
+        title: `Race-Pace Intervals — ${reps} × 1 km`, subtitle: `${reps} × 1 km @ race pace · 60–75 s jog`,
+        warmup: RUN_WARMUPS.interval || RUN_WARMUPS.tempo, rest: false,
+        note: 'Hold your goal race pace on every rep. We build this to 10 × 1 km so race day\'s 8 runs feel submaximal.' }
+    : { type: 'run', subtype: 'tempo', week, paceRef: 'tempo', distKm: Math.max(4, reps), icon: '🏃',
+        title: `Tempo Run — ${Math.max(4, reps)} km`, subtitle: 'Comfortably hard · threshold', warmup: RUN_WARMUPS.tempo,
+        rest: false, note: 'Threshold work — raises the ceiling so race pace sits lower in your gears.' };
+}
+
+function hyroxStrength(week, progress, loads, withStations) {
+  const squat = hyLerp(30, 60, progress), rdl = hyLerp(40, 70, progress);
+  const blocks = [
+    { title: 'Warm-up (8 min)', items: ['500m SkiErg easy — full hip hinge, arms overhead before the pull', 'Dynamic drills: leg swings · A-skips · band pull-aparts'] },
+    { title: 'Block A — Strength (4 rounds, 75s rest)', items: [
+      `Back Squat 4×${hyLerp(10, 6, progress)} @ ${squat}–${squat + 10}kg`,
+      `Romanian Deadlift 4×${hyLerp(10, 8, progress)} @ ${rdl}–${rdl + 10}kg`,
+      `Walking Lunges 3×20 steps @ ${hyLerp(0, 20, progress) ? '+' + hyLerp(5, 20, progress) + 'kg DBs' : 'bodyweight'}`,
+      'DB Bent-over Row 3×10 each arm',
+    ] },
+  ];
+  if (withStations) blocks.push({ title: `Block B — Hyrox Stations (${hyLerp(3, 4, progress)} rounds, 90s rest)`, items: [
+    `SkiErg ${hyLerp(500, 1000, progress)}m`,
+    `Wall Balls ${hyLerp(15, 30, progress)} @ ${loads.wallball}kg`,
+    `Farmers Carry ${hyLerp(50, 200, progress)}m @ 2×${loads.farmers}kg`,
+    `Sled Push + Pull ${hyLerp(25, 50, progress)}m @ ${loads.sled_push}kg`,
+  ] });
+  blocks.push({ title: 'Cool-down', items: ['Easy 500m row · full stretch / recovery protocol'] });
+  return { type: 'strength', week, icon: '💪', title: withStations ? 'Strength + Hyrox Stations' : 'Strength — Posterior Chain',
+    subtitle: `Knee-safe loading · ${withStations ? 'station endurance' : 'base strength'}`, kneePhase: 1, blocks,
+    note: 'Progress load only when the last set feels controlled. Log how it felt so we can ramp appropriately.' };
+}
+
+function hyroxSimulation(week, rounds, loads, isBenchmark) {
+  const stationOrder = ['skierg', 'sled_push', 'sled_pull', 'burpee', 'row', 'farmers', 'lunges', 'wallball'];
+  const rows = [];
+  for (let r = 0; r < rounds; r++) {
+    const st = stationOrder[r % stationOrder.length];
+    const dist = STATION_RACE_DIST[st];
+    const load = ({ sled_push: `${loads.sled_push}kg`, sled_pull: `${loads.sled_pull}kg`, farmers: `2×${loads.farmers}kg`, wallball: `${loads.wallball}kg`, lunges: `${loads.lunges}kg` })[st] || '';
+    const unit = STATION_UNITS[st] === 'reps' ? ` ${st === 'wallball' ? Math.round(dist) + ' reps' : dist}` : ` ${dist}m`;
+    rows.push(`R${r + 1}: 1 km @ race pace → ${STATION_LABELS[st]}${unit}${load ? ' (' + load + ')' : ''}`);
   }
+  return { type: 'sim', week, icon: isBenchmark ? '🎯' : '🔥',
+    title: isBenchmark ? `Benchmark Simulation — ${rounds} Rounds` : `Hyrox Simulation — ${rounds} Rounds`,
+    subtitle: `${rounds} × (1 km run + station) · compromised running`, paceRef: 'race',
+    stations: stationOrder.slice(0, Math.min(rounds, 8)),
+    blocks: [
+      { title: 'Warm-up (15 min)', items: ['Easy 1km jog', 'Knee activation (5 min)', 'Station primers: SkiErg 250m · 10 wall balls · sled walkthrough'] },
+      { title: `Main — ${rounds} rounds, transition ≤ 30s`, items: rows },
+      { title: 'Cool-down', items: ['Easy 500m jog · full recovery protocol'] },
+    ],
+    note: isBenchmark
+      ? 'Benchmark — hold race pace on every run and log your splits/RPE. This calibrates how fast we ramp you.'
+      : 'Compromised running is the whole game: run every rep at race pace even with fatigued legs.' };
+}
+
+function hyroxDeload(week) {
+  return { type: 'recovery', week, icon: '🧘', title: 'Deload — Absorb & Sharpen',
+    subtitle: '20–30 min · flush + light movement', blocks: [
+      { title: 'Soft tissue (10 min)', items: ['Foam roll quads · IT band · calves · upper back'] },
+      { title: 'Light movement (15 min)', items: ['SkiErg 3×250m easy', 'Mobility: hip flexor · pigeon · thoracic rotations'] },
+    ], note: 'Deload week — this is where the adaptation lands. Keep it genuinely easy.' };
+}
+
+function hyroxTaper(week) {
+  return { type: 'recovery', week, icon: '🧘', title: 'Taper — Stay Sharp', deload: true,
+    subtitle: 'Low volume, race-pace touches', blocks: [
+      { title: 'Primer', items: ['1km easy jog', '3 × 200m @ race pace · full recovery', 'Station touch: SkiErg 500m + 15 wall balls'] },
+    ], note: 'Taper week. Volume drops, intensity stays crisp. Trust the work you\'ve banked.' };
+}
+function hyroxShakeout(week) {
+  return { type: 'run', subtype: 'easy', week, paceRef: 'easy', distKm: 2, icon: '🏃', deload: true,
+    title: 'Shakeout Run — 2 km', subtitle: 'Very easy + strides', warmup: RUN_WARMUPS.shakeout, rest: false,
+    note: '2km very easy + 3 × 100m at race pace to remind the legs. Nothing more.' };
+}
+function hyroxRaceDay(week, profile) {
+  const goalStr = profile.goal_time_min ? `${Math.floor(profile.goal_time_min / 60)}h ${profile.goal_time_min % 60}m` : 'your goal';
+  return { type: 'sim', week, icon: '🏆', title: 'RACE DAY',
+    subtitle: `Goal: ${goalStr} · trust your training`, paceRef: 'race',
+    stations: ['skierg', 'sled_push', 'sled_pull', 'burpee', 'row', 'farmers', 'lunges', 'wallball'],
+    blocks: [{ title: 'Race strategy', items: [
+      'Runs 1–3: hold BACK — sit on race pace, do not chase adrenaline',
+      'Every run: settle into the pace you drilled for 10 km — 8 will feel manageable',
+      'Stations: smooth and efficient, breathe on the way out',
+      'Runs 6–8: this is where the race is won — you built the durability for exactly this',
+    ] }], note: 'All of it was for today.' };
+}
+
+// Weekly weekday layout by training days (wd: 0=Sun … 6=Sat). kind picked per week.
+function hyroxDayLayout(days) {
+  const base = [ { wd: 1, kind: 'strength' }, { wd: 3, kind: 'run' }, { wd: 5, kind: 'strengthStations' }, { wd: 6, kind: 'sim' } ];
+  if (days >= 5) base.push({ wd: 0, kind: 'run2' });               // 5th day: extra run
+  if (days >= 6) base.push({ wd: 2, kind: 'strengthStations' });   // 6th day: extra strength+Hyrox
+  return base;
+}
+
+// Block-periodized week plan across the available weeks. Always emits exactly
+// `totalWeeks` entries (build/foundation weeks + optional taper + race), so no
+// session is ever placed past the race week on a very short runway.
+function hyroxWeekPlan(totalWeeks) {
+  const weeks = [];
+  const middle = Math.max(0, totalWeeks - 2);          // reserve taper + race
+  const foundation = totalWeeks >= 9 ? 1 : 0;
+  for (let i = 0; i < middle; i++) {
+    if (i < foundation) { weeks.push({ phase: 'foundation' }); continue; }
+    const bi = i - foundation;
+    weeks.push({ phase: 'build', deload: (bi % 4 === 3) });
+  }
+  if (totalWeeks >= 2) weeks.push({ phase: 'taper' });  // keep a taper whenever we can
+  weeks.push({ phase: 'race' });
+  // progress 0..1 across non-taper/race weeks
+  const rampCount = weeks.filter(w => w.phase === 'foundation' || w.phase === 'build').length;
+  let c = 0;
+  weeks.forEach(w => { if (w.phase === 'foundation' || w.phase === 'build') { w.progress = rampCount <= 1 ? 1 : c / (rampCount - 1); c++; } });
+  return weeks;
+}
+
+// Is the runway long enough for a full progression? (drives the heads-up banner)
+function hyroxIsShortRunway(profile) {
+  const race = new Date((profile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+  const start = snapToSunday(new Date((profile.plan_start || DEFAULT_PLAN_START_STR) + 'T00:00:00'));
+  return Math.round((race - start) / (7 * 86400000)) < 6;
+}
+
+let SESSIONS = {};
+function buildHyroxPlan(profile) {
+  const race = new Date((profile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+  const raceWeekStart = snapToSunday(race);
+  let start = snapToSunday(new Date((profile.plan_start || DEFAULT_PLAN_START_STR) + 'T00:00:00'));
+  if (start >= raceWeekStart) start = new Date(raceWeekStart.getTime() - 3 * 7 * 86400000); // min 3-week floor
   PLAN_START = start;
-  const raceReady = race && !isNaN(race.getTime());
+  RACE_DATE  = race;
+
+  const totalWeeks = Math.max(1, Math.floor((raceWeekStart - start) / (7 * 86400000)) + 1);
+  const plan  = hyroxWeekPlan(totalWeeks);
+  const days  = profile.sessions_per_week || 4;
+  const layout = hyroxDayLayout(days);
+  const loads = hyroxLoads(profile);
+  const shortRunway = totalWeeks < 6;
+
+  // Pace engine (reuse running targets): ramp a conservative start → target
+  // race pace over the plan. Target = the MORE ambitious of the goal-derived
+  // pace and the athlete's current 10K (never cap a fit athlete — your "push
+  // harder if they're ahead" rule). Start ~30 s/km slower and close the gap.
+  const goalDerived10k = hyroxGoal10kSec(profile);
+  const base10k = profile.hyrox_10k_sec || null;
+  const target10k = base10k ? Math.min(base10k, goalDerived10k) : goalDerived10k;
+  const start10k  = Math.max(base10k || 0, target10k + 300); // +30 s/km on the 10K
+  const goalTargets = computeRunningPaceTargets(target10k, 10);
+  const baseTargets = (start10k > target10k) ? computeRunningPaceTargets(start10k, 10) : null;
+  const boost = hyroxFeedbackBoost();
+
   const map = {};
-  Object.entries(SESSION_TEMPLATE_DATA).forEach(([dayStr, tpl]) => {
-    let d;
-    if (raceReady && tpl.type === 'sim' && tpl.title === 'RACE DAY') {
-      d = new Date(race.getTime());                        // race day on the exact race date
-    } else if (raceReady && tpl.title === 'Shakeout Run') {
-      d = new Date(race.getTime() - 2 * 86400000);          // shakeout 2 days before the race
-    } else {
-      d = new Date(start.getTime() + parseInt(dayStr) * 86400000);
+  plan.forEach((wk, wIdx) => {
+    const weekNum = wIdx + 1;
+    const prog = Math.min(1, (wk.progress != null ? wk.progress : 1) + boost);
+    // pace targets for this week
+    if (goalTargets) {
+      let t = goalTargets;
+      if (baseTargets && wk.phase !== 'taper' && wk.phase !== 'race') {
+        t = {
+          easy: hyLerp(baseTargets.easy, goalTargets.easy, prog), long: hyLerp(baseTargets.long, goalTargets.long, prog),
+          tempo: hyLerp(baseTargets.tempo, goalTargets.tempo, prog), interval: hyLerp(baseTargets.interval, goalTargets.interval, prog),
+          race: hyLerp(baseTargets.race, goalTargets.race, prog),
+        };
+      }
+      PACE_TARGETS[weekNum] = { easy: secToMMSS(t.easy), long: secToMMSS(t.long), tempo: secToMMSS(t.tempo), intervals: secToMMSS(t.interval), race: secToMMSS(t.race) };
     }
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    map[key] = tpl;
+
+    // choose session content for this week
+    const sessionFor = (kind) => {
+      if (wk.phase === 'race') {
+        if (kind === 'sim') return hyroxRaceDay(weekNum, profile);
+        if (kind === 'run') return hyroxShakeout(weekNum);
+        return null; // race week: only shakeout + race
+      }
+      if (wk.phase === 'taper') {
+        if (kind === 'sim') return null;
+        if (kind === 'run') return hyroxShakeout(weekNum);
+        return hyroxTaper(weekNum);
+      }
+      if (wk.deload) {
+        if (kind === 'run' || kind === 'run2') return hyroxEasyRun(hyLerp(5, 6, prog), weekNum, 'Deload — keep it easy, legs only along for the ride.');
+        return hyroxDeload(weekNum);
+      }
+      // build / foundation weeks
+      const runKm     = shortRunway ? hyLerp(6, 10, prog) : hyLerp(5, 12, prog);   // long/aerobic build
+      const raceReps  = shortRunway ? hyLerp(5, 8, prog)  : hyLerp(4, 10, prog);   // race-pace 1km reps → up to 10
+      const simRounds = hyLerp(4, 8, prog);
+      const benchmark = wk.phase === 'foundation' || (weekNum % 4 === 1);
+      switch (kind) {
+        case 'strength':          return hyroxStrength(weekNum, prog, loads, false);
+        case 'strengthStations':  return hyroxStrength(weekNum, prog, loads, true);
+        case 'run':               return (weekNum % 2 === 0) ? hyroxQualityRun(weekNum, raceReps, true) : hyroxLongRun(runKm, weekNum);
+        case 'run2':              return hyroxEasyRun(hyLerp(5, 8, prog), weekNum);
+        case 'sim':               return hyroxSimulation(weekNum, simRounds, loads, benchmark);
+      }
+      return null;
+    };
+
+    layout.forEach(slot => {
+      const sess = sessionFor(slot.kind);
+      if (!sess) return;
+      let d;
+      if (wk.phase === 'race' && slot.kind === 'sim') {
+        d = new Date(race.getTime());                                // race day on exact date
+      } else if (wk.phase === 'race') {
+        // Race-week non-sim (the shakeout): always 2 days before the race,
+        // never on a fixed weekday that could land on/after race day.
+        d = new Date(race.getTime() - 2 * 86400000);
+      } else {
+        d = new Date(start.getTime() + (wIdx * 7 + slot.wd) * 86400000);
+      }
+      map[dateKey(d)] = sess;
+    });
   });
+
   SESSIONS = map;
-  if (raceReady) RACE_DATE = race;
   return map;
 }
-// Initialise immediately with defaults so the app works before user profile loads
-buildSessionMap(DEFAULT_PLAN_START_STR);
+
+
+// The Hyrox plan is now generated by buildHyroxPlan() (block-periodized,
+// variable length). Initialise immediately with defaults so the app works
+// before the user profile loads.
+buildHyroxPlan({ plan_start: DEFAULT_PLAN_START_STR, race_date: DEFAULT_RACE_DATE_STR, goal_time_min: 90, sessions_per_week: 4 });
 
 
 
@@ -1604,7 +1508,7 @@ async function loadUserData() {
     } else if (userProfile.active_plan === 'hybrid' && userProfile.hybrid_days) {
       buildHybridSessionMap(userProfile);
     } else {
-      buildSessionMap(userProfile.plan_start || DEFAULT_PLAN_START_STR, userProfile.race_date || DEFAULT_RACE_DATE_STR);
+      buildHyroxPlan(userProfile);
     }
     renderPlanSwitcher();
   }
@@ -1830,6 +1734,10 @@ function showWizard() {
   document.getElementById('wzGoal').value      = userProfile?.goal_time_min || '';
   const catEl = document.getElementById('wzCategory');
   if (catEl) catEl.value = userProfile?.race_category || '';
+  const hx10kEl = document.getElementById('wzHyrox10k');
+  if (hx10kEl) hx10kEl.value = userProfile?.hyrox_10k_sec
+    ? `${Math.floor(userProfile.hyrox_10k_sec / 60)}:${String(userProfile.hyrox_10k_sec % 60).padStart(2, '0')}`
+    : '';
 
   // Pre-fill Running details
   document.getElementById('wzRunDist').value      = userProfile?.race_distance || '10k';
@@ -2180,6 +2088,7 @@ async function wizardFinish() {
       race_date:       document.getElementById('wzRaceDate')?.value || DEFAULT_RACE_DATE_STR,
       plan_start:      document.getElementById('wzPlanStart')?.value || DEFAULT_PLAN_START_STR,
       race_category:   document.getElementById('wzCategory')?.value || null,
+      hyrox_10k_sec:   parseMMSS(document.getElementById('wzHyrox10k')?.value || '') || null,
       training_level:  wizardTrainingLevel || 'intermediate',
       active_plan:     'hyrox',
     });
@@ -2221,7 +2130,7 @@ async function wizardFinish() {
   }
 
   if (wizardRaceType === 'hyrox') {
-    buildSessionMap(profile.plan_start, profile.race_date || DEFAULT_RACE_DATE_STR);
+    buildHyroxPlan(userProfile);
   } else if (wizardRaceType === 'hybrid') {
     buildHybridSessionMap(userProfile);
   } else {
@@ -2568,18 +2477,7 @@ async function switchPlan(planType) {
   } else if (planType === 'hybrid') {
     buildHybridSessionMap(userProfile);
   } else {
-    const hyroxStart = userProfile.plan_start || DEFAULT_PLAN_START_STR;
-    buildSessionMap(hyroxStart, userProfile.race_date || DEFAULT_RACE_DATE_STR); // race-date anchored; sets PLAN_START + RACE_DATE
-    // Restore Hyrox PACE_TARGETS
-    Object.assign(PACE_TARGETS, {
-      1: { easy:'6:25', tempo:'6:10', intervals:'5:55' },
-      2: { easy:'6:12', tempo:'5:57', intervals:'5:42' },
-      3: { easy:'6:00', tempo:'5:45', intervals:'5:30' },
-      4: { easy:'6:00', tempo:'5:45', intervals:'5:30' },
-      5: { easy:'6:00', tempo:'5:45', intervals:'5:30' },
-      6: { easy:'6:15', tempo:'6:00', intervals:'5:30' },
-      7: { easy:'6:15', tempo:'6:00', intervals:'5:30' },
-    });
+    buildHyroxPlan(userProfile); // block-periodized; sets PLAN_START, RACE_DATE and PACE_TARGETS
   }
 
   // Persist the active_plan to the profile
@@ -2685,7 +2583,7 @@ function computeRaceProjection() {
     .map(d => state.feedback[d]?.actual_run_pace_sec)
     .filter(p => p && p > 0);
   const garminPaces = Object.entries(state.workoutData)
-    .filter(([k]) => SESSIONS[k]?.type === 'run' && SESSIONS[k]?.paceRef === 'intervals')
+    .filter(([k]) => SESSIONS[k]?.type === 'run' && (SESSIONS[k]?.paceRef === 'race' || SESSIONS[k]?.paceRef === 'intervals'))
     .map(([, d]) => d.avgPaceSec)
     .filter(p => p > 0);
 
@@ -2998,6 +2896,21 @@ function renderRedFlagBtn() {
 function renderProfilePrompt() {
   const el = document.getElementById('profilePromptBanner');
   if (!el) return;
+  const plan = userProfile?.active_plan || 'hyrox';
+
+  // Hyrox short-runway heads-up: not enough time for a full progression.
+  if (plan === 'hyrox' && userProfile && hyroxIsShortRunway(userProfile)) {
+    el.innerHTML = `
+      <div style="margin:8px 16px;padding:12px 14px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:10px;display:flex;align-items:center;gap:10px">
+        <div style="font-size:20px">⏱️</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#fbbf24;margin-bottom:2px">Short runway to race day</div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.4">Under 6 weeks — not quite enough for a full progression. We're ramping as fast as is safe from your current running level, and still keeping a taper the week before. Log your sessions so we can push where we can.</div>
+        </div>
+      </div>`;
+    return;
+  }
+
   // Only relevant to the Hyrox plan (training_level drives its intensity ramp)
   if (!userProfile || userProfile.training_level || (userProfile.active_plan && userProfile.active_plan !== 'hyrox')) { el.innerHTML = ''; return; }
   el.innerHTML = `
@@ -4589,6 +4502,11 @@ function downloadICS() {
         <label class="wizard-label">Goal finish time (total minutes — e.g. 90 = 1h 30m)</label>
         <input class="auth-input" id="wzGoal" type="number" placeholder="e.g. 90" min="45" max="240" oninput="runWizFeasibility()">
         <div id="wzFeasBox" style="display:none"></div>
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Current 10K time (mm:ss — optional)</label>
+        <input class="auth-input" id="wzHyrox10k" type="text" placeholder="e.g. 50:00" maxlength="5" oninput="runWizFeasibility()">
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Sets your running baseline and lets us check if there's enough runway to hit your goal. Leave blank to plan from your goal alone.</div>
       </div>
       <div class="wizard-field">
         <label class="wizard-label">Training days per week</label>
