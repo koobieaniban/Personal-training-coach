@@ -656,10 +656,11 @@ function phaseSessions(phase, weekNum, dist, numDays, volFactor) {
     ]
   };
 
+  const recKm = Math.max(3, Math.round(d('easy') * 0.7));
   const recovery = { type:'run', subtype:'easy', title:'Recovery Run',
-    subtitle:`${Math.round(d('easy') * 0.7)} km · very easy · Z1–Z2 · flush the legs`,
+    subtitle:`${recKm} km · very easy · Z1–Z2 · flush the legs`,
     icon:'🏃', paceRef:'easy', rest:false, warmup: RUN_WARMUPS.easy,
-    distKm: Math.round(d('easy') * 0.7) };
+    distKm: recKm };
 
   if (numDays <= 3) return [easy, quality, longRun];
   if (numDays === 4) return [easy, quality, strength, longRun];
@@ -1268,9 +1269,16 @@ function buildHyroxPlan(profile) {
     layout.forEach(slot => {
       const sess = sessionFor(slot.kind);
       if (!sess) return;
-      const d = (wk.phase === 'race' && slot.kind === 'sim')
-        ? new Date(race.getTime())                                   // race day on exact date
-        : new Date(start.getTime() + (wIdx * 7 + slot.wd) * 86400000);
+      let d;
+      if (wk.phase === 'race' && slot.kind === 'sim') {
+        d = new Date(race.getTime());                                // race day on exact date
+      } else if (wk.phase === 'race') {
+        // Race-week non-sim (the shakeout): always 2 days before the race,
+        // never on a fixed weekday that could land on/after race day.
+        d = new Date(race.getTime() - 2 * 86400000);
+      } else {
+        d = new Date(start.getTime() + (wIdx * 7 + slot.wd) * 86400000);
+      }
       map[dateKey(d)] = sess;
     });
   });
@@ -2575,7 +2583,7 @@ function computeRaceProjection() {
     .map(d => state.feedback[d]?.actual_run_pace_sec)
     .filter(p => p && p > 0);
   const garminPaces = Object.entries(state.workoutData)
-    .filter(([k]) => SESSIONS[k]?.type === 'run' && SESSIONS[k]?.paceRef === 'intervals')
+    .filter(([k]) => SESSIONS[k]?.type === 'run' && (SESSIONS[k]?.paceRef === 'race' || SESSIONS[k]?.paceRef === 'intervals'))
     .map(([, d]) => d.avgPaceSec)
     .filter(p => p > 0);
 
