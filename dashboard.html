@@ -345,7 +345,7 @@
   <div id="simAnalysisArea"></div>
 
   <div style="height:8px"></div>
-  <button class="export-btn" style="margin:0 16px;width:calc(100% - 32px);background:#1e1e10;border-color:#ffb347;color:#ffb347;font-weight:700" onclick="showRaceProjection()">📊 Race pace projection</button>
+  <button id="raceProjBtn" class="export-btn" style="margin:0 16px;width:calc(100% - 32px);background:#1e1e10;border-color:#ffb347;color:#ffb347;font-weight:700" onclick="showRaceProjection()">📊 Race pace projection</button>
   <div style="height:8px"></div>
   <div id="redFlagBtnArea"></div>
   <div style="height:8px"></div>
@@ -811,6 +811,173 @@ function getWeekWeightPct(week) {
   return 1.0;
 }
 
+// ── HYBRID plan (general fitness, no race) ─────────────────────────────────────
+// Rolling, performance-adaptive planner. Fixed weekday anchors:
+//   Mon strength · Wed run · Fri strength · weekend functional.
+// Strength progresses by double progression from logged weight/reps/feel.
+// Running ladders 5K→15K from the user's current 5K pace (piggybacks the run engine).
+// Functional is erg-focused — SkiErg + Row always present — mixing KB/DB/bodyweight.
+const HYBRID_WEEKS_AHEAD = 26;
+
+// Strength libraries (full gym). load: 'upper' → +2.5kg steps, 'lower' → +5kg steps.
+const HYBRID_STRENGTH = {
+  push: { title: 'Push — Chest / Shoulders / Triceps', icon: '💪', exercises: [
+    { name: 'Barbell Bench Press',            sets: 4, repMin: 6,  repMax: 10, load: 'upper' },
+    { name: 'Standing Overhead Press',        sets: 3, repMin: 8,  repMax: 10, load: 'upper' },
+    { name: 'Incline Dumbbell Press',         sets: 3, repMin: 10, repMax: 12, load: 'upper' },
+    { name: 'Dips (or Close-grip Bench)',     sets: 3, repMin: 8,  repMax: 10, load: 'upper' },
+    { name: 'Cable Lateral Raise',            sets: 3, repMin: 12, repMax: 15, load: 'upper' },
+    { name: 'Triceps Pushdown',               sets: 3, repMin: 12, repMax: 15, load: 'upper' },
+  ]},
+  pull: { title: 'Pull — Legs / Back / Biceps', icon: '💪', exercises: [
+    { name: 'Back Squat',                     sets: 4, repMin: 6,  repMax: 10, load: 'lower' },
+    { name: 'Romanian Deadlift',              sets: 3, repMin: 8,  repMax: 10, load: 'lower' },
+    { name: 'Weighted Pull-up / Lat Pulldown',sets: 3, repMin: 8,  repMax: 12, load: 'upper' },
+    { name: 'Chest-Supported Row',            sets: 3, repMin: 8,  repMax: 12, load: 'upper' },
+    { name: 'Face Pull',                      sets: 3, repMin: 15, repMax: 20, load: 'upper' },
+    { name: 'Barbell Biceps Curl → Hammer Curl', sets: 3, repMin: 10, repMax: 12, load: 'upper' },
+  ]},
+  // Leg day: balanced across the whole chain — hamstrings, glutes, adductors and
+  // lateral hip / ITB stability, NOT quad-dominant.
+  legs: { title: 'Legs — Quads · Hamstrings · Glutes · ITB', icon: '🦵', exercises: [
+    { name: 'Front Squat',                    sets: 4, repMin: 6,  repMax: 10, load: 'lower' },
+    { name: 'Romanian Deadlift (hamstrings)', sets: 4, repMin: 8,  repMax: 10, load: 'lower' },
+    { name: 'Bulgarian Split Squat (glute/unilateral)', sets: 3, repMin: 8, repMax: 12, load: 'lower' },
+    { name: 'Nordic / Lying Leg Curl (hamstrings)', sets: 3, repMin: 6, repMax: 10, load: 'lower' },
+    { name: 'Hip Thrust (glutes)',            sets: 3, repMin: 10, repMax: 12, load: 'lower' },
+    { name: 'Copenhagen Plank + Lateral Band Walk (adductor / ITB · glute med)', sets: 3, repMin: 10, repMax: 15, load: 'lower' },
+    { name: 'Standing Calf Raise',            sets: 3, repMin: 12, repMax: 15, load: 'lower' },
+  ]},
+  full: { title: 'Full Body', icon: '💪', exercises: [
+    { name: 'Back Squat',                     sets: 4, repMin: 6,  repMax: 8,  load: 'lower' },
+    { name: 'Barbell Bench Press',            sets: 3, repMin: 8,  repMax: 10, load: 'upper' },
+    { name: 'Romanian Deadlift',              sets: 3, repMin: 8,  repMax: 10, load: 'lower' },
+    { name: 'Chest-Supported Row',            sets: 3, repMin: 8,  repMax: 10, load: 'upper' },
+    { name: 'Standing Overhead Press',        sets: 3, repMin: 8,  repMax: 10, load: 'upper' },
+    { name: 'Face Pull',                      sets: 3, repMin: 15, repMax: 20, load: 'upper' },
+    { name: 'Hanging Leg Raise',              sets: 3, repMin: 10, repMax: 15, load: 'upper' },
+  ]},
+};
+
+const HYBRID_WARMUP = [
+  '5 min easy cardio (row or ski erg)',
+  'Dynamic: leg swings · band pull-aparts · bodyweight squats ×10 · glute bridge ×15',
+  '1–2 light ramp-up sets on your first heavy lift',
+];
+
+// Functional sessions — SkiErg + Row always included.
+const HYBRID_FUNCTIONAL = {
+  A: { title: 'Functional A — Erg Engine', icon: '🔥', note: 'Hold a pace you can repeat every round. Log your total rounds so we can progress it.',
+    blocks: [
+      { title: 'Warm-up', items: ['Row 500m easy', 'Dynamic mobility 5 min · ski + row technique primer'] },
+      { title: 'Main — 30 min AMRAP (steady, sustainable)', items: [
+        'SkiErg 500m', '15 Wall Balls (6kg)', 'Row 500m', '10 Burpee Broad Jumps', 'Kettlebell Farmers Carry 40m (2×24kg)',
+      ]},
+      { title: 'Cool-down', items: ['Easy row 500m · full-body stretch'] },
+    ]},
+  B: { title: 'Functional B — Power Intervals', icon: '⚡', note: 'Quality intervals — near race effort on the ergs. Track your split times to beat them next round.',
+    blocks: [
+      { title: 'Warm-up', items: ['SkiErg 500m easy', 'Dynamic mobility 5 min'] },
+      { title: 'Main — 5 rounds, 2 min rest', items: [
+        'SkiErg 1000m hard', 'Row 1000m hard', '15 Dumbbell Thrusters (2×20kg)', '20 Kettlebell Swings (24kg)', 'Sled Push 25m (if available, else 20 Goblet Squats)',
+      ]},
+      { title: 'Cool-down', items: ['Easy ski 500m · stretch'] },
+    ]},
+};
+
+// Weekday plan per training-days-per-week. wd: 0=Sun … 6=Sat.
+function hybridWeekPlan(days) {
+  if (days <= 3) return [ { wd: 1, kind: 'full' }, { wd: 3, kind: 'run' }, { wd: 6, kind: 'funcA' } ];
+  if (days === 4) return [ { wd: 1, kind: 'push' }, { wd: 3, kind: 'run' }, { wd: 5, kind: 'pull' }, { wd: 6, kind: 'funcA' } ];
+  if (days === 5) return [ { wd: 1, kind: 'push' }, { wd: 3, kind: 'run' }, { wd: 5, kind: 'pull' }, { wd: 6, kind: 'funcA' }, { wd: 0, kind: 'funcB' } ];
+  return [ { wd: 1, kind: 'push' }, { wd: 2, kind: 'pull' }, { wd: 3, kind: 'run' }, { wd: 5, kind: 'legs' }, { wd: 6, kind: 'funcA' }, { wd: 0, kind: 'funcB' } ];
+}
+
+function hybridStrengthSession(kind, week) {
+  const lib = HYBRID_STRENGTH[kind] || HYBRID_STRENGTH.full;
+  return { type: 'hybrid_strength', kind, week, icon: lib.icon, title: lib.title,
+    subtitle: '45–60 min · log your weights & reps', warmup: HYBRID_WARMUP, exercises: lib.exercises, rest: false };
+}
+
+function hybridRunSession(week) {
+  const odd = week % 2 === 1;
+  if (odd) {
+    const km = Math.min(15, 5 + Math.floor((week - 1) / 2)); // ladders 5K → 15K
+    const isLong = km >= 8;
+    return { type: 'run', subtype: isLong ? 'long' : 'easy', week,
+      title: `${isLong ? 'Long' : 'Endurance'} Run — ${km} km`,
+      subtitle: `${km} km · Zone 2 · aerobic base`, icon: '🏃',
+      paceRef: isLong ? 'long' : 'easy', rest: false, warmup: RUN_WARMUPS.easy, distKm: km };
+  }
+  const useIntervals = week % 4 === 0;
+  return { type: 'run', subtype: useIntervals ? 'interval' : 'tempo', week,
+    title: useIntervals ? 'Intervals — 6 × 800m' : 'Tempo Run — 6 km',
+    subtitle: useIntervals ? '6 × 800m @ 5K effort · 90s jog recovery' : '20 min continuous @ comfortably hard',
+    icon: useIntervals ? '⚡' : '🏃', paceRef: useIntervals ? 'intervals' : 'tempo', rest: false,
+    warmup: RUN_WARMUPS[useIntervals ? 'interval' : 'tempo'] || RUN_WARMUPS.tempo, distKm: 6 };
+}
+
+function hybridFunctionalSession(variant, week) {
+  const f = HYBRID_FUNCTIONAL[variant];
+  return { type: 'functional', week, icon: f.icon, title: f.title,
+    subtitle: 'Erg-focused conditioning', blocks: f.blocks, note: f.note, rest: false };
+}
+
+function hybridSession(kind, week) {
+  if (kind === 'run')   return hybridRunSession(week);
+  if (kind === 'funcA') return hybridFunctionalSession('A', week);
+  if (kind === 'funcB') return hybridFunctionalSession('B', week);
+  return hybridStrengthSession(kind, week);
+}
+
+function buildHybridSessionMap(profile) {
+  const days     = profile.hybrid_days || 4;
+  const startStr = profile.hybrid_start || DEFAULT_PLAN_START_STR;
+  const start    = snapToSunday(new Date(startStr + 'T00:00:00'));
+  PLAN_START = start;
+  RACE_DATE  = new Date(start.getTime() + HYBRID_WEEKS_AHEAD * 7 * 86400000);
+  const fiveKsec = profile.hybrid_5k_sec || 1500; // default 25:00
+  const pt = computeRunningPaceTargets(fiveKsec, 5);
+  const plan = hybridWeekPlan(days);
+  const map = {};
+  for (let w = 0; w < HYBRID_WEEKS_AHEAD; w++) {
+    const weekNum = w + 1;
+    if (pt) PACE_TARGETS[weekNum] = {
+      easy: secToMMSS(pt.easy), long: secToMMSS(pt.long), tempo: secToMMSS(pt.tempo),
+      intervals: secToMMSS(pt.interval), race: secToMMSS(pt.race),
+    };
+    plan.forEach(slot => {
+      const d = new Date(start.getTime() + (w * 7 + slot.wd) * 86400000);
+      map[dateKey(d)] = hybridSession(slot.kind, weekNum);
+    });
+  }
+  SESSIONS = map;
+  return map;
+}
+
+// ── Strength double-progression (performance-stateful, calendar-independent) ───
+function hybridLastLog(exName, beforeDateStr) {
+  const log = state.strengthLog || {};
+  const dates = Object.keys(log).filter(d => d < beforeDateStr).sort().reverse();
+  for (const d of dates) {
+    const entry = (log[d] || []).find(e => e.name === exName && e.weight != null);
+    if (entry) return entry;
+  }
+  return null;
+}
+
+function hybridSuggest(ex, dateStr) {
+  const last = hybridLastLog(ex.name, dateStr);
+  const inc = ex.load === 'lower' ? 5 : 2.5;
+  if (!last) return { weight: null, reps: ex.repMin, hint: 'First time — log the weight you use today.' };
+  const feelHard = last.feel === 'hard' || last.feel === 'failed';
+  if (last.reps >= ex.repMax && !feelHard)
+    return { weight: last.weight + inc, reps: ex.repMin, hint: `↑ +${inc}kg — you topped the rep range feeling strong.` };
+  if (last.reps < ex.repMin || last.feel === 'failed')
+    return { weight: Math.max(0, last.weight - inc), reps: ex.repMin, hint: `↓ back off ${inc}kg and rebuild into range.` };
+  return { weight: last.weight, reps: Math.min(ex.repMax, last.reps + 1), hint: 'Same weight — chase 1–2 more reps.' };
+}
+
 // ── Session templates ─────────────────────────────────────────────────────────
 // planDay = days offset from plan_start (0-indexed).
 // buildSessionMap() turns these into date-keyed SESSIONS based on userProfile.plan_start.
@@ -1227,14 +1394,18 @@ function saveState(s) {
 
 async function pushTrainingState(s) {
   if (!currentUser || !sb) return;
-  const isRunning = userProfile?.active_plan === 'running';
+  const plan = userProfile?.active_plan || 'hyrox';
   const row = {
     user_id:    currentUser.id,
     updated_at: new Date().toISOString(),
   };
-  if (isRunning) {
+  if (plan === 'running') {
     row.running_completions = s.completions || {};
     row.running_pace_adj    = s.paceAdj    || {};
+  } else if (plan === 'hybrid') {
+    row.hybrid_completions  = s.completions || {};
+    row.hybrid_pace_adj     = s.paceAdj    || {};
+    row.hybrid_strength_log = s.strengthLog || {};
   } else {
     row.completions = s.completions || {};
     row.pace_adj    = s.paceAdj    || {};
@@ -1295,16 +1466,25 @@ async function loadStateFromSupabase() {
     const workoutData = {};
     (wdRes.data || []).forEach(w => { workoutData[w.session_date] = w.raw_data || {}; });
 
-    // Load both plans' state — activeState is for the currently active plan
-    const isRunning = userProfile?.active_plan === 'running';
+    // Load all plans' state — activeState is for the currently active plan
+    const plan = userProfile?.active_plan || 'hyrox';
+    const activeCompletions = plan === 'running' ? (ts?.running_completions || {})
+                            : plan === 'hybrid'  ? (ts?.hybrid_completions  || {})
+                            : (ts?.completions || {});
+    const activePaceAdj     = plan === 'running' ? (ts?.running_pace_adj || {})
+                            : plan === 'hybrid'  ? (ts?.hybrid_pace_adj  || {})
+                            : (ts?.pace_adj || {});
     return {
-      completions:          isRunning ? (ts?.running_completions || {}) : (ts?.completions || {}),
-      paceAdj:              isRunning ? (ts?.running_pace_adj    || {}) : (ts?.pace_adj    || {}),
-      // Stash the other plan's state so switchPlan() can swap without a DB round-trip
+      completions:          activeCompletions,
+      paceAdj:              activePaceAdj,
+      strengthLog:          ts?.hybrid_strength_log || {},
+      // Stash the other plans' state so switchPlan() can swap without a DB round-trip
       _hyroxCompletions:    ts?.completions          || {},
       _hyroxPaceAdj:        ts?.pace_adj             || {},
       _runningCompletions:  ts?.running_completions  || {},
       _runningPaceAdj:      ts?.running_pace_adj     || {},
+      _hybridCompletions:   ts?.hybrid_completions   || {},
+      _hybridPaceAdj:       ts?.hybrid_pace_adj      || {},
       feedback,
       workoutData,
     };
@@ -1328,13 +1508,14 @@ function subscribeRealtime() {
       filter: `user_id=eq.${currentUser.id}`
     }, payload => {
       if (!payload.new) return;
-      const isRunning = userProfile?.active_plan === 'running';
-      state.completions = isRunning
-        ? (payload.new.running_completions || {})
-        : (payload.new.completions || {});
-      state.paceAdj = isRunning
-        ? (payload.new.running_pace_adj || {})
-        : (payload.new.pace_adj || {});
+      const plan = userProfile?.active_plan || 'hyrox';
+      state.completions = plan === 'running' ? (payload.new.running_completions || {})
+                        : plan === 'hybrid'  ? (payload.new.hybrid_completions  || {})
+                        : (payload.new.completions || {});
+      state.paceAdj = plan === 'running' ? (payload.new.running_pace_adj || {})
+                    : plan === 'hybrid'  ? (payload.new.hybrid_pace_adj  || {})
+                    : (payload.new.pace_adj || {});
+      if (plan === 'hybrid') state.strengthLog = payload.new.hybrid_strength_log || {};
       saveLocalState(state);
       render();
     })
@@ -1393,6 +1574,8 @@ async function loadUserData() {
   if (userProfile) {
     if (userProfile.active_plan === 'running' && userProfile.running_race_date) {
       buildRunningSessionMap(userProfile);
+    } else if (userProfile.active_plan === 'hybrid' && userProfile.hybrid_days) {
+      buildHybridSessionMap(userProfile);
     } else {
       buildSessionMap(userProfile.plan_start || DEFAULT_PLAN_START_STR);
       RACE_DATE = new Date((userProfile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
@@ -1405,7 +1588,7 @@ async function loadUserData() {
     const raw   = loadState();
     // Reject localStorage if it was saved by a different user — prevents bleed between accounts
     const isMine = raw._userId === currentUser.id;
-    const local  = isMine ? raw : { completions: {}, feedback: {}, paceAdj: {}, workoutData: {} };
+    const local  = isMine ? raw : { completions: {}, feedback: {}, paceAdj: {}, workoutData: {}, strengthLog: {} };
 
     const localCount    = Object.keys(local.completions || {}).length;
     const remoteCount   = Object.keys(remote.completions || {}).length;
@@ -1437,12 +1620,16 @@ async function loadUserData() {
     const localPaceKeys  = Object.keys(local.paceAdj  || {}).length;
     const remotePaceKeys = Object.keys(remote.paceAdj || {}).length;
 
+    const localSlCount  = Object.keys(local.strengthLog  || {}).length;
+    const remoteSlCount = Object.keys(remote.strengthLog || {}).length;
+
     state = {
       ...remote,
       completions: useLocalComp ? local.completions : remote.completions,
       paceAdj:     localPaceKeys >= remotePaceKeys ? (local.paceAdj || {}) : (remote.paceAdj || {}),
       feedback:    useLocalFb   ? local.feedback   : remote.feedback,
       workoutData: mergedWd,
+      strengthLog: localSlCount > remoteSlCount ? (local.strengthLog || {}) : (remote.strengthLog || {}),
     };
 
     if (useLocalComp) pushTrainingState(state);
@@ -1464,6 +1651,7 @@ async function loadUserData() {
     if (!state.feedback)    state.feedback    = {};
     if (!state.paceAdj)     state.paceAdj     = {};
     if (!state.workoutData) state.workoutData  = {};
+    if (!state.strengthLog) state.strengthLog  = {};
 
     // Recompute paceAdj from merged feedback — ensures any device sees correct values
     // regardless of what was (or wasn't) stored in paceAdj previously.
@@ -1589,10 +1777,13 @@ let wizardFreq = 3;
 let wizardDays = new Set();
 let wizardRaceType = 'hyrox';
 let wizardBaselinePaceSec = null; // sec/km from recent run — used to calibrate plan
+let wizardHybrid5kSec = null;     // current 5K time in seconds — hybrid running baseline
 
 function showWizard() {
   // Detect race type from current profile
-  wizardRaceType = userProfile?.active_plan === 'running' ? 'running' : 'hyrox';
+  wizardRaceType = userProfile?.active_plan === 'running' ? 'running'
+                 : userProfile?.active_plan === 'hybrid'  ? 'hybrid'
+                 : 'hyrox';
   wizardBaselinePaceSec = null;
 
   // Reset injury tags
@@ -1629,6 +1820,18 @@ function showWizard() {
     document.getElementById('wzBaselineTime').value =
       `${Math.floor(b10kSec / 3600)}:${String(Math.floor((b10kSec % 3600) / 60)).padStart(2, '0')}`;
     updateBaselinePreview();
+  }
+
+  // Pre-fill Hybrid details
+  const hyStartEl = document.getElementById('wzHybridStart');
+  if (hyStartEl) hyStartEl.value = userProfile?.hybrid_start || DEFAULT_PLAN_START_STR;
+  const hy5kEl = document.getElementById('wzHybrid5k');
+  if (hy5kEl) hy5kEl.value = userProfile?.hybrid_5k_sec
+    ? `${Math.floor(userProfile.hybrid_5k_sec / 60)}:${String(userProfile.hybrid_5k_sec % 60).padStart(2, '0')}`
+    : '';
+  if (wizardRaceType === 'hybrid') {
+    selectHybridFreq(userProfile?.hybrid_days || 4,
+      document.querySelector(`#wzYFreqBtns .wz-freq-btn:nth-child(${(userProfile?.hybrid_days || 4) - 2})`));
   }
 
   // Pre-fill training level
@@ -1675,6 +1878,7 @@ const WIZARD_STEP_NUM = {
   'wizScreen-type':       1,
   'wizScreen-hyrox':      2,
   'wizScreen-running':    2,
+  'wizScreen-hybrid':     2,
   'wizScreen-hyrox-level':3,
   'wizScreen-baseline':   3,
   'wizScreen-injuries':   4,
@@ -1701,7 +1905,17 @@ function wizardGoNext(screenId) {
     return;
   }
   if (screenId === 'wizScreen-type') {
-    wizardGoTo(wizardRaceType === 'hyrox' ? 'wizScreen-hyrox' : 'wizScreen-running');
+    const dest = wizardRaceType === 'hyrox' ? 'wizScreen-hyrox'
+               : wizardRaceType === 'hybrid' ? 'wizScreen-hybrid'
+               : 'wizScreen-running';
+    wizardGoTo(dest);
+    return;
+  }
+  if (screenId === 'wizScreen-hybrid') {
+    const t = parseGoalTime(document.getElementById('wzHybrid5k').value);
+    if (!t) { showErr('Enter your current 5K time like 25:00.'); return; }
+    wizardHybrid5kSec = t;
+    wizardGoTo('wizScreen-injuries');
     return;
   }
   if (screenId === 'wizScreen-hyrox') {
@@ -1743,12 +1957,22 @@ function wizardGoNext(screenId) {
 
 function selectRaceType(type, updateUI = true) {
   wizardRaceType = type;
-  if (updateUI) {
-    document.getElementById('rt-hyrox')?.classList.toggle('selected', type === 'hyrox');
-    document.getElementById('rt-running')?.classList.toggle('selected', type === 'running');
-  } else {
-    document.getElementById('rt-hyrox')?.classList.toggle('selected', type === 'hyrox');
-    document.getElementById('rt-running')?.classList.toggle('selected', type === 'running');
+  document.getElementById('rt-hyrox')?.classList.toggle('selected', type === 'hyrox');
+  document.getElementById('rt-running')?.classList.toggle('selected', type === 'running');
+  document.getElementById('rt-hybrid')?.classList.toggle('selected', type === 'hybrid');
+}
+
+function selectHybridFreq(n, btn) {
+  wizardFreq = n;
+  const c = document.getElementById('wzYFreqBtns');
+  if (c) c.querySelectorAll('.wz-freq-btn').forEach(b => b.classList.toggle('selected', b === btn));
+  const hint = document.getElementById('wzYFreqHint');
+  if (hint) {
+    const layout = n <= 3 ? 'Mon strength · Wed run · Sat functional'
+      : n === 4 ? 'Mon push · Wed run · Fri pull · Sat functional'
+      : n === 5 ? 'Mon push · Wed run · Fri pull · Sat + Sun functional'
+      : 'Mon push · Tue pull · Wed run · Fri legs · Sat + Sun functional';
+    hint.textContent = layout;
   }
 }
 
@@ -1933,6 +2157,14 @@ async function wizardFinish() {
       training_level:  wizardTrainingLevel || 'intermediate',
       active_plan:     'hyrox',
     });
+  } else if (wizardRaceType === 'hybrid') {
+    Object.assign(profile, {
+      hybrid_days:      wizardFreq || 4,
+      hybrid_5k_sec:    wizardHybrid5kSec || parseGoalTime(document.getElementById('wzHybrid5k')?.value || '') || 1500,
+      hybrid_start:     document.getElementById('wzHybridStart')?.value || DEFAULT_PLAN_START_STR,
+      hybrid_equipment: 'full_gym',
+      active_plan:      'hybrid',
+    });
   } else {
     const goalSec = parseGoalTime(document.getElementById('wzRunGoal')?.value || '') || null;
     const runPlanStart = document.getElementById('wzRunPlanStart')?.value || DEFAULT_PLAN_START_STR;
@@ -1965,6 +2197,8 @@ async function wizardFinish() {
   if (wizardRaceType === 'hyrox') {
     buildSessionMap(profile.plan_start);
     RACE_DATE = new Date((profile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+  } else if (wizardRaceType === 'hybrid') {
+    buildHybridSessionMap(userProfile);
   } else {
     buildRunningSessionMap(userProfile);
   }
@@ -2264,6 +2498,11 @@ async function switchPlan(planType) {
     showWizard();
     return;
   }
+  // If switching to hybrid and it's never been set up, show the wizard
+  if (planType === 'hybrid' && !userProfile?.hybrid_days) {
+    showWizard();
+    return;
+  }
 
   const current = userProfile?.active_plan || 'hyrox';
 
@@ -2271,15 +2510,21 @@ async function switchPlan(planType) {
   if (current === 'hyrox') {
     state._hyroxCompletions = { ...state.completions };
     state._hyroxPaceAdj     = { ...state.paceAdj };
-  } else {
+  } else if (current === 'running') {
     state._runningCompletions = { ...state.completions };
     state._runningPaceAdj     = { ...state.paceAdj };
+  } else {
+    state._hybridCompletions = { ...state.completions };
+    state._hybridPaceAdj     = { ...state.paceAdj };
   }
 
   // Load the target plan's stashed state
   if (planType === 'running') {
     state.completions = { ...(state._runningCompletions || {}) };
     state.paceAdj     = { ...(state._runningPaceAdj     || {}) };
+  } else if (planType === 'hybrid') {
+    state.completions = { ...(state._hybridCompletions || {}) };
+    state.paceAdj     = { ...(state._hybridPaceAdj     || {}) };
   } else {
     state.completions = { ...(state._hyroxCompletions || {}) };
     state.paceAdj     = { ...(state._hyroxPaceAdj     || {}) };
@@ -2288,6 +2533,8 @@ async function switchPlan(planType) {
   // Rebuild session map for the new plan
   if (planType === 'running') {
     buildRunningSessionMap(userProfile);
+  } else if (planType === 'hybrid') {
+    buildHybridSessionMap(userProfile);
   } else {
     const hyroxStart = userProfile.plan_start || DEFAULT_PLAN_START_STR;
     buildSessionMap(hyroxStart);  // sets PLAN_START, snapped to Sunday
@@ -2324,7 +2571,8 @@ function renderPlanSwitcher() {
   const active = userProfile?.active_plan || 'hyrox';
   el.innerHTML = `
     <button class="plan-tab ${active === 'hyrox'   ? 'active' : ''}" onclick="switchPlan('hyrox')">🏋️ Hyrox</button>
-    <button class="plan-tab ${active === 'running' ? 'active' : ''}" onclick="switchPlan('running')">🏃 Running</button>`;
+    <button class="plan-tab ${active === 'running' ? 'active' : ''}" onclick="switchPlan('running')">🏃 Running</button>
+    <button class="plan-tab ${active === 'hybrid'  ? 'active' : ''}" onclick="switchPlan('hybrid')">⚡ Hybrid</button>`;
 }
 
 let state = loadState();
@@ -2333,6 +2581,7 @@ if (!state.completions)  state.completions  = {};
 if (!state.feedback)     state.feedback     = {};
 if (!state.paceAdj)      state.paceAdj      = {};
 if (!state.workoutData)  state.workoutData  = {};
+if (!state.strengthLog)  state.strengthLog  = {};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -2717,7 +2966,8 @@ function renderRedFlagBtn() {
 function renderProfilePrompt() {
   const el = document.getElementById('profilePromptBanner');
   if (!el) return;
-  if (!userProfile || userProfile.training_level) { el.innerHTML = ''; return; }
+  // Only relevant to the Hyrox plan (training_level drives its intensity ramp)
+  if (!userProfile || userProfile.training_level || (userProfile.active_plan && userProfile.active_plan !== 'hyrox')) { el.innerHTML = ''; return; }
   el.innerHTML = `
     <div style="margin:8px 16px;padding:12px 14px;background:#1a1e2a;border:1px solid #5b8fff;border-radius:10px;display:flex;align-items:center;gap:10px">
       <div style="font-size:20px">👋</div>
@@ -2731,14 +2981,27 @@ function renderProfilePrompt() {
 
 
 function renderHeader() {
-  document.getElementById('daysToRace').textContent = daysToRace();
+  const isHybrid = userProfile?.active_plan === 'hybrid';
+  const countdownEl = document.querySelector('.race-countdown');
+  if (isHybrid && countdownEl) {
+    countdownEl.innerHTML = `Rolling plan · <span>week ${getWeekNum(today())}</span>`;
+  } else if (countdownEl) {
+    countdownEl.innerHTML = `Race in <span id="daysToRace">${daysToRace()}</span> days`;
+  }
   document.getElementById('headerDate').textContent = formatDate(viewDate);
   const week = getWeekNum(viewDate);
   const session = SESSIONS[viewDate];
-  const wkLabel = session && !session.rest ? `Week ${week} of ${totalPlanWeeks()}` : `Week ${week} — Rest Day`;
+  const wkLabel = isHybrid
+    ? (session && !session.rest ? `Week ${week}` : `Week ${week} — Rest Day`)
+    : (session && !session.rest ? `Week ${week} of ${totalPlanWeeks()}` : `Week ${week} — Rest Day`);
   document.getElementById('headerWeek').textContent = wkLabel;
   const logoEl = document.getElementById('planLogo');
-  if (logoEl) logoEl.textContent = (userProfile?.active_plan === 'running') ? 'Running Plan' : 'Hyrox Plan';
+  if (logoEl) logoEl.textContent = (userProfile?.active_plan === 'running') ? 'Running Plan'
+                                 : (userProfile?.active_plan === 'hybrid')  ? 'Hybrid Plan'
+                                 : 'Hyrox Plan';
+  // Race-pace projection is Hyrox-specific — hide it for other plans
+  const rpBtn = document.getElementById('raceProjBtn');
+  if (rpBtn) rpBtn.style.display = (userProfile?.active_plan || 'hyrox') === 'hyrox' ? 'block' : 'none';
 }
 
 function renderWeekStrip() {
@@ -3010,6 +3273,73 @@ function renderSession() {
     return;
   }
 
+  // Hybrid strength session — per-exercise weight/reps/feel logging with progression
+  if (session.type === 'hybrid_strength') {
+    const logged = state.strengthLog[viewDate] || null;
+    const warmupHtml = `
+      <div class="block">
+        <div class="block-title">Warm-up · 8–10 min</div>
+        ${(session.warmup || []).map(i => `<div class="block-item">${i}</div>`).join('')}
+      </div>`;
+
+    const exRows = (session.exercises || []).map((ex, i) => {
+      const sug = hybridSuggest(ex, viewDate);
+      const prior = logged ? logged.find(e => e.name === ex.name) : null;
+      const wVal = prior ? prior.weight : (sug.weight != null ? sug.weight : '');
+      const rVal = prior ? prior.reps : sug.reps;
+      const fVal = prior ? prior.feel : 'moderate';
+      const scheme = `${ex.sets} × ${ex.repMin}–${ex.repMax}`;
+      if (comp === 'done') {
+        const done = prior ? `${prior.weight != null ? prior.weight + ' kg' : '—'} × ${prior.reps} · ${prior.feel}` : 'not logged';
+        return `<div class="block-item"><strong>${ex.name}</strong> <span style="color:var(--muted)">(${scheme})</span><br><span style="color:var(--accent)">${done}</span></div>`;
+      }
+      return `
+        <div class="block-item" style="border-bottom:1px solid var(--border,#232838);padding-bottom:10px;margin-bottom:8px">
+          <div style="font-weight:700">${ex.name} <span style="color:var(--muted);font-weight:400">· ${scheme}</span></div>
+          <div style="color:var(--muted);font-size:12px;margin:2px 0 6px">${sug.hint}</div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input id="hx-w-${i}" type="number" inputmode="decimal" step="2.5" value="${wVal}" placeholder="kg"
+              style="width:70px;padding:6px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg2,#12151f);color:var(--text)"> kg
+            <input id="hx-r-${i}" type="number" inputmode="numeric" value="${rVal}" placeholder="reps"
+              style="width:60px;padding:6px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg2,#12151f);color:var(--text)"> reps
+            <select id="hx-f-${i}" style="padding:6px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg2,#12151f);color:var(--text)">
+              <option value="easy" ${fVal==='easy'?'selected':''}>Easy</option>
+              <option value="moderate" ${fVal==='moderate'?'selected':''}>Moderate</option>
+              <option value="hard" ${fVal==='hard'?'selected':''}>Hard</option>
+              <option value="failed" ${fVal==='failed'?'selected':''}>Failed a set</option>
+            </select>
+          </div>
+        </div>`;
+    }).join('');
+
+    const strengthAction = comp === 'done'
+      ? `<div class="action-bar"><button class="btn btn-undo btn-full" onclick="undoComplete()">Undo</button></div>`
+      : `<div class="action-bar">
+           <button class="btn btn-complete" onclick="saveHybridStrength()">Save session log ✓</button>
+           <button class="btn btn-skip" onclick="markComplete('skipped')">Skip</button>
+         </div>`;
+
+    area.innerHTML = `
+      <div class="session-card">
+        <div class="session-header">
+          <div class="session-type-badge type-strength">${session.icon}</div>
+          <div class="session-title"><h2>${session.title}</h2><div class="session-subtitle">${session.subtitle || ''}</div></div>
+          <div class="status-badge status-${statusCls}">${statusLabel}</div>
+        </div>
+        <div class="session-body">
+          ${noteHtml}
+          ${warmupHtml}
+          <div class="block">
+            <div class="block-title">${comp === 'done' ? 'Logged' : 'Workout · log each lift'}</div>
+            ${exRows}
+          </div>
+        </div>
+        ${strengthAction}
+      </div>`;
+    renderStats();
+    return;
+  }
+
   const nudge = session.type === 'run' ? getVolumeNudge(week) : null;
   const nudgeHtml = nudge === 'strong'
     ? `<div class="volume-nudge">💪 <strong>Your runs this week are feeling easy.</strong> Consider adding one extra rep to today's interval set, or extending the easy run by 1km.</div>`
@@ -3043,13 +3373,17 @@ function renderStats() {
   const planDates = new Set(Object.keys(SESSIONS).filter(d => SESSIONS[d] && !SESSIONS[d].rest));
   const doneCount = Object.entries(state.completions).filter(([d, v]) => planDates.has(d) && v === 'done').length;
   const totalSessions = planDates.size;
-  const pct = Math.round(doneCount / totalSessions * 100);
+  const pct = totalSessions ? Math.round(doneCount / totalSessions * 100) : 0;
+
+  const thirdTile = userProfile?.active_plan === 'hybrid'
+    ? `<div class="stat"><div class="s-val">${getWeekNum(today())}</div><div class="s-label">Current week</div></div>`
+    : `<div class="stat"><div class="s-val">${daysToRace()}</div><div class="s-label">Days to race</div></div>`;
 
   el.innerHTML = `<div class="stats-card">
     <div class="stats-row">
       <div class="stat"><div class="s-val">${doneCount}</div><div class="s-label">Sessions done</div></div>
       <div class="stat"><div class="s-val">${pct}%</div><div class="s-label">Complete</div></div>
-      <div class="stat"><div class="s-val">${daysToRace()}</div><div class="s-label">Days to race</div></div>
+      ${thirdTile}
     </div>
   </div>`;
 }
@@ -3065,6 +3399,27 @@ function markComplete(status) {
 function undoComplete() {
   delete state.completions[viewDate];
   delete state.feedback[viewDate];
+  delete state.strengthLog[viewDate];
+  saveState(state);
+  render();
+}
+
+function saveHybridStrength() {
+  const session = SESSIONS[viewDate];
+  if (!session || session.type !== 'hybrid_strength') return;
+  const log = (session.exercises || []).map((ex, i) => {
+    const w = document.getElementById(`hx-w-${i}`)?.value;
+    const r = document.getElementById(`hx-r-${i}`)?.value;
+    const f = document.getElementById(`hx-f-${i}`)?.value || 'moderate';
+    return {
+      name:   ex.name,
+      weight: w === '' || w == null ? null : parseFloat(w),
+      reps:   r === '' || r == null ? null : parseInt(r, 10),
+      feel:   f,
+    };
+  });
+  state.strengthLog[viewDate] = log;
+  state.completions[viewDate] = 'done';
   saveState(state);
   render();
 }
@@ -4161,6 +4516,13 @@ function downloadICS() {
             <div class="so-desc">10k, half marathon, or full marathon. 80/20 polarised training with LTHR-anchored pace zones.</div>
           </div>
         </div>
+        <div class="sync-opt" id="rt-hybrid" onclick="selectRaceType('hybrid')" style="cursor:pointer">
+          <div class="so-icon">⚡</div>
+          <div>
+            <div class="so-title">Hybrid — General fitness (no race)</div>
+            <div class="so-desc">A rolling strength + running + functional plan. Progresses your weights and paces from what you actually log. No race date needed.</div>
+          </div>
+        </div>
       </div>
       <button class="wizard-next" onclick="wizardGoNext('wizScreen-type')">Next →</button>
     </div>
@@ -4275,6 +4637,33 @@ function downloadICS() {
       </div>
       <p id="wzErr-running" style="font-size:12px;color:var(--skipped);display:none;margin-bottom:8px"></p>
       <button class="wizard-next" onclick="wizardGoNext('wizScreen-running')">Next →</button>
+    </div>
+
+    <!-- Step 2c: Hybrid (general fitness) details -->
+    <div class="wizard-step" id="wizScreen-hybrid">
+      <h2>Your hybrid plan</h2>
+      <p class="wizard-sub">A rolling week: strength Mon/Fri, run Wed, functional on the weekend. It never ends — it just keeps progressing from what you log.</p>
+      <div class="wizard-field">
+        <label class="wizard-label">Training days per week</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px" id="wzYFreqBtns">
+          <button class="wz-freq-btn selected" onclick="selectHybridFreq(3,this)">3</button>
+          <button class="wz-freq-btn" onclick="selectHybridFreq(4,this)">4</button>
+          <button class="wz-freq-btn" onclick="selectHybridFreq(5,this)">5</button>
+          <button class="wz-freq-btn" onclick="selectHybridFreq(6,this)">6</button>
+        </div>
+        <div id="wzYFreqHint" style="font-size:12px;color:var(--muted)"></div>
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Current 5K time (mm:ss — e.g. 25:00)</label>
+        <input class="auth-input" id="wzHybrid5k" type="text" placeholder="e.g. 25:00" maxlength="5">
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Sets your running baseline. Your runs ladder 5K → 15K and get faster as you beat targets.</div>
+      </div>
+      <div class="wizard-field">
+        <label class="wizard-label">Plan start date</label>
+        <input class="auth-input" id="wzHybridStart" type="date">
+      </div>
+      <p id="wzErr-hybrid" style="font-size:12px;color:var(--skipped);display:none;margin-bottom:8px"></p>
+      <button class="wizard-next" onclick="wizardGoNext('wizScreen-hybrid')">Next →</button>
     </div>
 
     <!-- Step 3a: Hyrox training level -->

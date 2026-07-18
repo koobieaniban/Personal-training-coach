@@ -77,6 +77,18 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS running_plan_start DATE;
 ALTER TABLE public.training_state ADD COLUMN IF NOT EXISTS running_completions JSONB DEFAULT '{}';
 ALTER TABLE public.training_state ADD COLUMN IF NOT EXISTS running_pace_adj    JSONB DEFAULT '{}';
 
+-- ── Running baseline (progressive pacing) ───────────────────────────────────
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS baseline_pace_sec INTEGER;
+
+-- ── Hybrid (general-fitness, no-race) plan columns (safe to re-run) ─────────
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hybrid_days       INTEGER;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hybrid_5k_sec     INTEGER;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hybrid_start      DATE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hybrid_equipment  TEXT DEFAULT 'full_gym';
+ALTER TABLE public.training_state ADD COLUMN IF NOT EXISTS hybrid_completions  JSONB DEFAULT '{}';
+ALTER TABLE public.training_state ADD COLUMN IF NOT EXISTS hybrid_pace_adj     JSONB DEFAULT '{}';
+ALTER TABLE public.training_state ADD COLUMN IF NOT EXISTS hybrid_strength_log JSONB DEFAULT '{}';
+
 -- ── Garmin credentials (encrypted at rest, service-role access only) ─────────
 -- RLS is enabled but NO user-facing policies — only Railway service_role key can read/write.
 CREATE TABLE IF NOT EXISTS public.garmin_credentials (
