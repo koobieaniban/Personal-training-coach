@@ -1154,12 +1154,36 @@ function hyroxRaceDay(week, profile) {
     ] }], note: 'All of it was for today.' };
 }
 
-// Weekly weekday layout by training days (wd: 0=Sun … 6=Sat). kind picked per week.
-function hyroxDayLayout(days) {
-  const base = [ { wd: 1, kind: 'strength' }, { wd: 3, kind: 'run' }, { wd: 5, kind: 'strengthStations' }, { wd: 6, kind: 'sim' } ];
-  if (days >= 5) base.push({ wd: 0, kind: 'run2' });               // 5th day: extra run
-  if (days >= 6) base.push({ wd: 2, kind: 'strengthStations' });   // 6th day: extra strength+Hyrox
-  return base;
+// Weekly layout derived from the user's PICKED training days (wd: 0=Sun … 6=Sat):
+//  • Exactly one simulation — Saturday if picked, else Sunday if picked, else the
+//    last picked weekday (so weekday-only picks keep the sim on a weekday).
+//  • The remaining days alternate strength → run → strength… (strength first,
+//    guaranteeing at least one run). Strength slots alternate strength+stations
+//    and posterior-chain strength. A 3-day week = 1 strength + 1 run + 1 sim.
+function hyroxDayLayoutFromPicks(trainingDays) {
+  const order = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const wdMap = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+  let picks = [...new Set((trainingDays || 'Mon,Wed,Fri,Sat').split(',').map(s => s.trim())
+    .filter(d => order.includes(d)))]
+    .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  if (picks.length < 3) picks = ['Mon','Wed','Sat'];   // sane floor: Hyrox needs strength+run+sim
+
+  const simDay = picks.includes('Sat') ? 'Sat'
+               : picks.includes('Sun') ? 'Sun'
+               : picks[picks.length - 1];              // last picked weekday
+
+  const layout = [{ wd: wdMap[simDay], kind: 'sim' }];
+  let strengthCount = 0, runCount = 0;
+  picks.filter(d => d !== simDay).forEach((d, i) => {
+    if (i % 2 === 0) {
+      layout.push({ wd: wdMap[d], kind: strengthCount % 2 === 0 ? 'strengthStations' : 'strength' });
+      strengthCount++;
+    } else {
+      layout.push({ wd: wdMap[d], kind: runCount === 0 ? 'run' : 'run2' });
+      runCount++;
+    }
+  });
+  return layout;
 }
 
 // Block-periodized week plan across the available weeks. Always emits exactly
@@ -1201,8 +1225,7 @@ function buildHyroxPlan(profile) {
 
   const totalWeeks = Math.max(1, Math.floor((raceWeekStart - start) / (7 * 86400000)) + 1);
   const plan  = hyroxWeekPlan(totalWeeks);
-  const days  = profile.sessions_per_week || 4;
-  const layout = hyroxDayLayout(days);
+  const layout = hyroxDayLayoutFromPicks(profile.training_days);
   const loads = hyroxLoads(profile);
   const shortRunway = totalWeeks < 6;
 
