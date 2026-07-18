@@ -387,9 +387,13 @@ const DEFAULT_RACE_DATE_STR  = (() => { const d = new Date(); d.setDate(d.getDat
 let RACE_DATE  = new Date(DEFAULT_RACE_DATE_STR  + 'T00:00:00');
 let PLAN_START = snapToSunday(new Date(DEFAULT_PLAN_START_STR + 'T00:00:00'));
 
-// Total plan weeks derived from actual dates (used for "Week X of N" and strip cap)
+// Total plan weeks derived from actual dates (used for "Week X of N" and strip cap).
+// Uses the same floor+1 semantics as getWeekNum so the race week is always
+// included — otherwise a race that lands exactly N*7 days after PLAN_START
+// (e.g. a Sunday race, PLAN_START = race-42) would report one week short and
+// the race-day chip would be unreachable in the week strip.
 function totalPlanWeeks() {
-  return Math.max(1, Math.ceil((RACE_DATE - PLAN_START) / (7 * 86400000)));
+  return Math.max(1, Math.floor((RACE_DATE - PLAN_START) / (7 * 86400000)) + 1);
 }
 
 const PACE_TARGETS = {
@@ -1349,17 +1353,37 @@ const SESSION_TEMPLATE_DATA = {
 
 // Dynamic session map — built from SESSION_TEMPLATE_DATA + user plan_start
 let SESSIONS = {};
-function buildSessionMap(planStartStr) {
-  const startStr = planStartStr || DEFAULT_PLAN_START_STR;
-  const start = snapToSunday(new Date(startStr + 'T00:00:00'));
+function buildSessionMap(planStartStr, raceDateStr) {
+  // Anchor the plan to the RACE DATE, not a fixed 7 weeks from plan_start:
+  // the template's final content week (race week) is aligned to the race's
+  // calendar week, so the taper lands the week before and race day sits on
+  // the exact date the user entered — wherever that falls in the calendar.
+  const race = raceDateStr ? new Date(raceDateStr + 'T00:00:00') : null;
+  const maxWeek = Math.max(...Object.values(SESSION_TEMPLATE_DATA).map(t => t.week || 1));
+  let start;
+  if (race && !isNaN(race.getTime())) {
+    const raceWeekStart = snapToSunday(race);
+    start = new Date(raceWeekStart.getTime() - (maxWeek - 1) * 7 * 86400000);
+  } else {
+    start = snapToSunday(new Date((planStartStr || DEFAULT_PLAN_START_STR) + 'T00:00:00'));
+  }
   PLAN_START = start;
+  const raceReady = race && !isNaN(race.getTime());
   const map = {};
   Object.entries(SESSION_TEMPLATE_DATA).forEach(([dayStr, tpl]) => {
-    const d = new Date(start.getTime() + parseInt(dayStr) * 86400000);
+    let d;
+    if (raceReady && tpl.type === 'sim' && tpl.title === 'RACE DAY') {
+      d = new Date(race.getTime());                        // race day on the exact race date
+    } else if (raceReady && tpl.title === 'Shakeout Run') {
+      d = new Date(race.getTime() - 2 * 86400000);          // shakeout 2 days before the race
+    } else {
+      d = new Date(start.getTime() + parseInt(dayStr) * 86400000);
+    }
     const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     map[key] = tpl;
   });
   SESSIONS = map;
+  if (raceReady) RACE_DATE = race;
   return map;
 }
 // Initialise immediately with defaults so the app works before user profile loads
@@ -1580,8 +1604,7 @@ async function loadUserData() {
     } else if (userProfile.active_plan === 'hybrid' && userProfile.hybrid_days) {
       buildHybridSessionMap(userProfile);
     } else {
-      buildSessionMap(userProfile.plan_start || DEFAULT_PLAN_START_STR);
-      RACE_DATE = new Date((userProfile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+      buildSessionMap(userProfile.plan_start || DEFAULT_PLAN_START_STR, userProfile.race_date || DEFAULT_RACE_DATE_STR);
     }
     renderPlanSwitcher();
   }
@@ -2198,8 +2221,7 @@ async function wizardFinish() {
   }
 
   if (wizardRaceType === 'hyrox') {
-    buildSessionMap(profile.plan_start);
-    RACE_DATE = new Date((profile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+    buildSessionMap(profile.plan_start, profile.race_date || DEFAULT_RACE_DATE_STR);
   } else if (wizardRaceType === 'hybrid') {
     buildHybridSessionMap(userProfile);
   } else {
@@ -2547,8 +2569,7 @@ async function switchPlan(planType) {
     buildHybridSessionMap(userProfile);
   } else {
     const hyroxStart = userProfile.plan_start || DEFAULT_PLAN_START_STR;
-    buildSessionMap(hyroxStart);  // sets PLAN_START, snapped to Sunday
-    RACE_DATE  = new Date((userProfile.race_date || DEFAULT_RACE_DATE_STR) + 'T00:00:00');
+    buildSessionMap(hyroxStart, userProfile.race_date || DEFAULT_RACE_DATE_STR); // race-date anchored; sets PLAN_START + RACE_DATE
     // Restore Hyrox PACE_TARGETS
     Object.assign(PACE_TARGETS, {
       1: { easy:'6:25', tempo:'6:10', intervals:'5:55' },
@@ -3276,7 +3297,7 @@ function renderSession() {
             <div class="block-item" style="color:var(--muted)">${zone}</div>
           </div>
           ${warmupHtml}
-          ${paceGuideRows ? `<div class="block"><div class="block-title">Week ${week} pace guide</div>${paceGuideRows}</div>` : ''}
+          ${paceGuideRows ? `<div class="block"><div class="block-title">Week ${getWeekNum(viewDate)} pace guide</div>${paceGuideRows}</div>` : ''}
         </div>
         ${actionHtml}
       </div>`;
