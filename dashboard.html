@@ -1163,8 +1163,8 @@ function hyroxRaceDay(week, profile) {
 function hyroxDayLayoutFromPicks(trainingDays) {
   const order = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const wdMap = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
-  let picks = (trainingDays || 'Mon,Wed,Fri,Sat').split(',').map(s => s.trim())
-    .filter(d => order.includes(d))
+  let picks = [...new Set((trainingDays || 'Mon,Wed,Fri,Sat').split(',').map(s => s.trim())
+    .filter(d => order.includes(d)))]
     .sort((a, b) => order.indexOf(a) - order.indexOf(b));
   if (picks.length < 3) picks = ['Mon','Wed','Sat'];   // sane floor: Hyrox needs strength+run+sim
 
