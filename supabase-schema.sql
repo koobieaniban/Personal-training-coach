@@ -80,6 +80,9 @@ ALTER TABLE public.training_state ADD COLUMN IF NOT EXISTS running_pace_adj    J
 -- ── Running baseline (progressive pacing) ───────────────────────────────────
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS baseline_pace_sec INTEGER;
 
+-- ── Hyrox 10K running baseline (drives the block-periodized run-pace ramp) ───
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hyrox_10k_sec INTEGER;
+
 -- ── Hybrid (general-fitness, no-race) plan columns (safe to re-run) ─────────
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hybrid_days       INTEGER;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hybrid_5k_sec     INTEGER;
