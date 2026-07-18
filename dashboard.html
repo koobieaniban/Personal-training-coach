@@ -399,7 +399,8 @@ const PACE_TARGETS = {
   4: { easy: '6:00', tempo: '5:45', intervals: '5:30' },
   5: { easy: '6:00', tempo: '5:45', intervals: '5:30' },
   6: { easy: '6:15', tempo: '6:00', intervals: '5:30' },
-  // Weeks beyond 6: use taper targets (same as week 6)
+  7: { easy: '6:15', tempo: '6:00', intervals: '5:30' }, // race week (shakeout + race day)
+  // Weeks beyond 7: use taper targets (same as week 6)
 };
 
 // ── Running plan engine ───────────────────────────────────────────────────────
@@ -1326,7 +1327,7 @@ const SESSION_TEMPLATE_DATA = {
     note: 'Last hard running before race day. Feel sharp, not wrecked.',
   },
   45: {
-    week: 6, type: 'run', icon: '🏃', title: 'Shakeout Run', distKm: 2,
+    week: 7, type: 'run', icon: '🏃', title: 'Shakeout Run', distKm: 2,
     paceRef: 'easy', kneePhase: 'activation', deload: true,
     blocks: [
       { title: 'Warm-up', items: ['Knee activation'] },
@@ -1335,7 +1336,7 @@ const SESSION_TEMPLATE_DATA = {
     ],
   },
   48: {
-    week: 6, type: 'sim', icon: '🏆', title: 'RACE DAY',
+    week: 7, type: 'sim', icon: '🏆', title: 'RACE DAY',
     subtitle: 'All of this was for today. Trust your training.',
     blocks: [
       { title: 'Morning protocol', items: ['Wake 2.5–3 hrs before race start', 'Breakfast: oats + banana or toast + eggs (something you\'ve practised)', 'Arrive at venue 60 min before start'] },
@@ -2556,6 +2557,7 @@ async function switchPlan(planType) {
       4: { easy:'6:00', tempo:'5:45', intervals:'5:30' },
       5: { easy:'6:00', tempo:'5:45', intervals:'5:30' },
       6: { easy:'6:15', tempo:'6:00', intervals:'5:30' },
+      7: { easy:'6:15', tempo:'6:00', intervals:'5:30' },
     });
   }
 
