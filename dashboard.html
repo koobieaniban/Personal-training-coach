@@ -387,9 +387,13 @@ const DEFAULT_RACE_DATE_STR  = (() => { const d = new Date(); d.setDate(d.getDat
 let RACE_DATE  = new Date(DEFAULT_RACE_DATE_STR  + 'T00:00:00');
 let PLAN_START = snapToSunday(new Date(DEFAULT_PLAN_START_STR + 'T00:00:00'));
 
-// Total plan weeks derived from actual dates (used for "Week X of N" and strip cap)
+// Total plan weeks derived from actual dates (used for "Week X of N" and strip cap).
+// Uses the same floor+1 semantics as getWeekNum so the race week is always
+// included — otherwise a race that lands exactly N*7 days after PLAN_START
+// (e.g. a Sunday race, PLAN_START = race-42) would report one week short and
+// the race-day chip would be unreachable in the week strip.
 function totalPlanWeeks() {
-  return Math.max(1, Math.ceil((RACE_DATE - PLAN_START) / (7 * 86400000)));
+  return Math.max(1, Math.floor((RACE_DATE - PLAN_START) / (7 * 86400000)) + 1);
 }
 
 const PACE_TARGETS = {
@@ -3293,7 +3297,7 @@ function renderSession() {
             <div class="block-item" style="color:var(--muted)">${zone}</div>
           </div>
           ${warmupHtml}
-          ${paceGuideRows ? `<div class="block"><div class="block-title">Week ${week} pace guide</div>${paceGuideRows}</div>` : ''}
+          ${paceGuideRows ? `<div class="block"><div class="block-title">Week ${getWeekNum(viewDate)} pace guide</div>${paceGuideRows}</div>` : ''}
         </div>
         ${actionHtml}
       </div>`;
