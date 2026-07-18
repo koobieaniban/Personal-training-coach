@@ -970,6 +970,8 @@ function hybridSuggest(ex, dateStr) {
   const last = hybridLastLog(ex.name, dateStr);
   const inc = ex.load === 'lower' ? 5 : 2.5;
   if (!last) return { weight: null, reps: ex.repMin, hint: 'First time — log the weight you use today.' };
+  // Weight logged but reps left blank — can't judge progression, so hold the weight.
+  if (last.reps == null) return { weight: last.weight, reps: ex.repMin, hint: 'Same weight as last time.' };
   const feelHard = last.feel === 'hard' || last.feel === 'failed';
   if (last.reps >= ex.repMax && !feelHard)
     return { weight: last.weight + inc, reps: ex.repMin, hint: `↑ +${inc}kg — you topped the rep range feeling strong.` };
@@ -1912,8 +1914,8 @@ function wizardGoNext(screenId) {
     return;
   }
   if (screenId === 'wizScreen-hybrid') {
-    const t = parseGoalTime(document.getElementById('wzHybrid5k').value);
-    if (!t) { showErr('Enter your current 5K time like 25:00.'); return; }
+    const t = parseMMSS(document.getElementById('wzHybrid5k').value);
+    if (!t || t < 600 || t > 3600) { showErr('Enter your current 5K time as mm:ss, e.g. 25:00.'); return; }
     wizardHybrid5kSec = t;
     wizardGoTo('wizScreen-injuries');
     return;
@@ -2160,7 +2162,7 @@ async function wizardFinish() {
   } else if (wizardRaceType === 'hybrid') {
     Object.assign(profile, {
       hybrid_days:      wizardFreq || 4,
-      hybrid_5k_sec:    wizardHybrid5kSec || parseGoalTime(document.getElementById('wzHybrid5k')?.value || '') || 1500,
+      hybrid_5k_sec:    wizardHybrid5kSec || parseMMSS(document.getElementById('wzHybrid5k')?.value || '') || 1500,
       hybrid_start:     document.getElementById('wzHybridStart')?.value || DEFAULT_PLAN_START_STR,
       hybrid_equipment: 'full_gym',
       active_plan:      'hybrid',
@@ -2480,6 +2482,13 @@ function parseGoalTime(str) {
   const parts = str.trim().split(':').map(Number);
   if (parts.length !== 2 || parts.some(isNaN)) return null;
   return parts[0] * 3600 + parts[1] * 60;
+}
+
+function parseMMSS(str) {
+  // Minutes:seconds → total seconds (e.g. "25:00" → 1500). Used for 5K time.
+  const parts = (str || '').trim().split(':').map(Number);
+  if (parts.length !== 2 || parts.some(isNaN)) return null;
+  return parts[0] * 60 + parts[1];
 }
 
 function fmtPace(secPerKm) {
