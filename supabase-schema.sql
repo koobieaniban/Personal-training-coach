@@ -83,6 +83,9 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS baseline_pace_sec INTEGER;
 -- ── Hyrox 10K running baseline (drives the block-periodized run-pace ramp) ───
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hyrox_10k_sec INTEGER;
 
+-- ── Hyrox strength logging (per-set weight/reps, own partition) ─────────────
+ALTER TABLE public.training_state ADD COLUMN IF NOT EXISTS hyrox_strength_log JSONB DEFAULT '{}';
+
 -- ── Hybrid (general-fitness, no-race) plan columns (safe to re-run) ─────────
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hybrid_days       INTEGER;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hybrid_5k_sec     INTEGER;
