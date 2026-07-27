@@ -979,15 +979,15 @@ function buildHybridSessionMap(profile) {
 // to the numbers the progression rule needs.
 function strengthSetStats(entry, ex) {
   let sets;
-  if (Array.isArray(entry.sets)) sets = entry.sets.filter(s => s && s.reps != null);
+  if (Array.isArray(entry.sets)) sets = entry.sets.filter(s => s && (s.weight != null || s.reps != null));
   else if (entry.weight != null || entry.reps != null) sets = [{ weight: entry.weight, reps: entry.reps }];
   else sets = [];
   if (!sets.length) return null;
   const weights = sets.map(s => s.weight).filter(w => w != null);
-  const reps = sets.map(s => s.reps);
+  const reps    = sets.map(s => s.reps).filter(r => r != null);   // only judge reps we actually have
   return {
-    workingWeight: weights.length ? Math.min(...weights) : null, // the base weight held across all sets
-    allHitTop:     reps.every(r => r >= ex.repMax),
+    workingWeight: weights.length ? Math.min(...weights) : null,  // base weight held across all sets
+    allHitTop:      reps.length > 0 && reps.every(r => r >= ex.repMax),
     anyBelowBottom: reps.some(r => r < ex.repMin),
     feel: entry.feel,
   };
@@ -1354,12 +1354,12 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = (window.supabase || window.supabase_js)?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     // "Remember me": keep the session in localStorage so it survives new tabs/
-    // windows and browser restarts; auto-refresh quietly. detectSessionInUrl off
-    // avoids a fresh window trying to parse a session out of the URL. The default
-    // storageKey is kept so existing signed-in users aren't logged out on upgrade.
+    // windows and browser restarts; auto-refresh quietly. The default storageKey
+    // is kept so existing signed-in users aren't logged out on upgrade, and
+    // detectSessionInUrl is left at its default (true) so the password-reset
+    // recovery link still establishes a session.
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: false,
   },
 }) || null;
 
@@ -1550,8 +1550,12 @@ function subscribeRealtime() {
 async function initAuth() {
   if (!sb) { render(); return; }
   const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) {
-    if (inactivityExpired()) { await sb.auth.signOut(); render(); return; }
+  if (session?.user && inactivityExpired()) {
+    // Signed in but idle > 1 week — sign out, but DON'T return: the auth
+    // listener below must still register so the next login works.
+    await sb.auth.signOut();
+    render();
+  } else if (session?.user) {
     touchActivity();
     currentUser = session.user;
     await loadUserData();
@@ -4394,7 +4398,7 @@ function toUTCStamp(dateStr, hourLocal) {
 }
 
 function generateICS() {
-  const SESSION_DURATION = { recovery: 25, run: 60, strength: 80, sim: 95 };
+  const SESSION_DURATION = { recovery: 25, run: 60, strength: 80, hybrid_strength: 80, sim: 95 };
   const SIM_OVERRIDE = {
     '2026-05-25': 60, '2026-06-01': 80,
     '2026-06-08': 105, '2026-06-15': 135, '2026-06-22': 95,
@@ -4425,10 +4429,10 @@ function generateICS() {
     endD.setMinutes(endD.getMinutes() + durMin);
     const endStampUTC = endD.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
 
-    const typeLabel = { run: '🏃 Run', strength: '💪 Strength', sim: '🔥 Simulation', recovery: '🧘 Recovery', station: '🎯 Station Mastery', emom: '⏱️ EMOM Benchmark' }[session.type] || session.type;
+    const typeLabel = { run: '🏃 Run', strength: '💪 Strength', hybrid_strength: '💪 Strength', sim: '🔥 Simulation', recovery: '🧘 Recovery', station: '🎯 Station Mastery', emom: '⏱️ EMOM Benchmark' }[session.type] || session.type;
     const summary = `${typeLabel}: ${session.title}`;
 
-    // Build description from blocks
+    // Build description from blocks, or from exercises/extraBlocks (loggable strength)
     const descParts = [session.subtitle || ''];
     (session.blocks || []).forEach(b => {
       descParts.push(`${b.title}:`);
@@ -4437,6 +4441,14 @@ function generateICS() {
         descParts.push(`• ${clean}`);
       });
     });
+    if (session.exercises) {
+      descParts.push('Lifts:');
+      session.exercises.forEach(ex => descParts.push(`• ${ex.name} ${ex.sets}×${ex.repMin}–${ex.repMax}`));
+      (session.extraBlocks || []).forEach(b => {
+        descParts.push(`${b.title}:`);
+        b.items.slice(0, 4).forEach(item => descParts.push(`• ${item.replace(/<[^>]+>/g, '')}`));
+      });
+    }
     if (session.note) descParts.push(`💡 ${session.note}`);
     const desc = escICS(descParts.join('\n'));
 
