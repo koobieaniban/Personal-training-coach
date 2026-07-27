@@ -975,28 +975,53 @@ function buildHybridSessionMap(profile) {
 }
 
 // ── Strength double-progression (performance-stateful, calendar-independent) ───
+// Normalise a log entry (old per-exercise {weight,reps} OR new {sets:[{weight,reps}]})
+// to the numbers the progression rule needs.
+function strengthSetStats(entry, ex) {
+  let sets;
+  if (Array.isArray(entry.sets)) sets = entry.sets.filter(s => s && s.reps != null);
+  else if (entry.weight != null || entry.reps != null) sets = [{ weight: entry.weight, reps: entry.reps }];
+  else sets = [];
+  if (!sets.length) return null;
+  const weights = sets.map(s => s.weight).filter(w => w != null);
+  const reps = sets.map(s => s.reps);
+  return {
+    workingWeight: weights.length ? Math.min(...weights) : null, // the base weight held across all sets
+    allHitTop:     reps.every(r => r >= ex.repMax),
+    anyBelowBottom: reps.some(r => r < ex.repMin),
+    feel: entry.feel,
+  };
+}
+
+function strengthHasData(entry) {
+  return (Array.isArray(entry.sets) && entry.sets.some(s => s && s.weight != null)) || entry.weight != null;
+}
+
 function hybridLastLog(exName, beforeDateStr) {
   const log = state.strengthLog || {};
   const dates = Object.keys(log).filter(d => d < beforeDateStr).sort().reverse();
   for (const d of dates) {
-    const entry = (log[d] || []).find(e => e.name === exName && e.weight != null);
+    const entry = (log[d] || []).find(e => e.name === exName && strengthHasData(e));
     if (entry) return entry;
   }
   return null;
 }
 
+// Standard double progression on per-set data: bump the weight only when EVERY
+// set hit the top of the rep range (feeling ok); back off if any set fell below
+// the bottom (or a set failed); otherwise hold and chase reps.
 function hybridSuggest(ex, dateStr) {
   const last = hybridLastLog(ex.name, dateStr);
   const inc = ex.load === 'lower' ? 5 : 2.5;
-  if (!last) return { weight: null, reps: ex.repMin, hint: 'First time — log the weight you use today.' };
-  // Weight logged but reps left blank — can't judge progression, so hold the weight.
-  if (last.reps == null) return { weight: last.weight, reps: ex.repMin, hint: 'Same weight as last time.' };
-  const feelHard = last.feel === 'hard' || last.feel === 'failed';
-  if (last.reps >= ex.repMax && !feelHard)
-    return { weight: last.weight + inc, reps: ex.repMin, hint: `↑ +${inc}kg — you topped the rep range feeling strong.` };
-  if (last.reps < ex.repMin || last.feel === 'failed')
-    return { weight: Math.max(0, last.weight - inc), reps: ex.repMin, hint: `↓ back off ${inc}kg and rebuild into range.` };
-  return { weight: last.weight, reps: Math.min(ex.repMax, last.reps + 1), hint: 'Same weight — chase 1–2 more reps.' };
+  if (!last) return { weight: null, hint: 'First time — log the weight you use today.' };
+  const st = strengthSetStats(last, ex);
+  if (!st || st.workingWeight == null) return { weight: last.weight ?? null, hint: 'Same weight as last time.' };
+  const feelHard = st.feel === 'hard' || st.feel === 'failed';
+  if (st.allHitTop && !feelHard)
+    return { weight: st.workingWeight + inc, hint: `↑ +${inc}kg — you hit ${ex.repMax} on every set.` };
+  if (st.anyBelowBottom || st.feel === 'failed')
+    return { weight: Math.max(0, st.workingWeight - inc), hint: `↓ back off ${inc}kg and rebuild into range.` };
+  return { weight: st.workingWeight, hint: `Same weight — push toward ${ex.repMax} on every set.` };
 }
 
 // ── HYROX variable-length, block-periodized generator ──────────────────────────
@@ -1076,26 +1101,28 @@ function hyroxQualityRun(week, reps, isRace) {
 }
 
 function hyroxStrength(week, progress, loads, withStations) {
-  const squat = hyLerp(30, 60, progress), rdl = hyLerp(40, 70, progress);
-  const blocks = [
-    { title: 'Warm-up (8 min)', items: ['500m SkiErg easy — full hip hinge, arms overhead before the pull', 'Dynamic drills: leg swings · A-skips · band pull-aparts'] },
-    { title: 'Block A — Strength (4 rounds, 75s rest)', items: [
-      `Back Squat 4×${hyLerp(10, 6, progress)} @ ${squat}–${squat + 10}kg`,
-      `Romanian Deadlift 4×${hyLerp(10, 8, progress)} @ ${rdl}–${rdl + 10}kg`,
-      `Walking Lunges 3×20 steps @ ${hyLerp(0, 20, progress) ? '+' + hyLerp(5, 20, progress) + 'kg DBs' : 'bodyweight'}`,
-      'DB Bent-over Row 3×10 each arm',
-    ] },
+  // Loggable barbell/DB work (weight + reps per set drive the progression).
+  const exercises = [
+    { name: 'Back Squat',        sets: 4, repMin: 6,  repMax: 10, load: 'lower' },
+    { name: 'Romanian Deadlift', sets: 4, repMin: 8,  repMax: 10, load: 'lower' },
+    { name: 'Walking Lunges',    sets: 3, repMin: 10, repMax: 12, load: 'lower' },
+    { name: 'DB Bent-over Row',  sets: 3, repMin: 8,  repMax: 12, load: 'upper' },
   ];
-  if (withStations) blocks.push({ title: `Block B — Hyrox Stations (${hyLerp(3, 4, progress)} rounds, 90s rest)`, items: [
+  // Station endurance stays a circuit (distance/time based) — shown as info, not logged.
+  const extraBlocks = [];
+  if (withStations) extraBlocks.push({ title: `Hyrox Stations — ${hyLerp(3, 4, progress)} rounds, 90s rest (not logged)`, items: [
     `SkiErg ${hyLerp(500, 1000, progress)}m`,
     `Wall Balls ${hyLerp(15, 30, progress)} @ ${loads.wallball}kg`,
     `Farmers Carry ${hyLerp(50, 200, progress)}m @ 2×${loads.farmers}kg`,
     `Sled Push + Pull ${hyLerp(25, 50, progress)}m @ ${loads.sled_push}kg`,
   ] });
-  blocks.push({ title: 'Cool-down', items: ['Easy 500m row · full stretch / recovery protocol'] });
-  return { type: 'strength', week, icon: '💪', title: withStations ? 'Strength + Hyrox Stations' : 'Strength — Posterior Chain',
-    subtitle: `Knee-safe loading · ${withStations ? 'station endurance' : 'base strength'}`, kneePhase: 1, blocks,
-    note: 'Progress load only when the last set feels controlled. Log how it felt so we can ramp appropriately.' };
+  extraBlocks.push({ title: 'Cool-down', items: ['Easy 500m row · full stretch / recovery protocol'] });
+  return { type: 'hybrid_strength', week, icon: '💪',
+    title: withStations ? 'Strength + Hyrox Stations' : 'Strength — Posterior Chain',
+    subtitle: `Knee-safe loading · ${withStations ? 'station endurance' : 'base strength'}`, kneePhase: 1,
+    warmup: ['500m SkiErg easy — full hip hinge, arms overhead before the pull', 'Dynamic drills: leg swings · A-skips · band pull-aparts'],
+    exercises, extraBlocks,
+    note: 'Log each set. We bump the weight once you hit the top of the range on every set.' };
 }
 
 function hyroxSimulation(week, rounds, loads, isBenchmark) {
@@ -1324,7 +1351,25 @@ buildHyroxPlan({ plan_start: DEFAULT_PLAN_START_STR, race_date: DEFAULT_RACE_DAT
 
 const SUPABASE_URL = 'https://bphjvdtlcuqnewyykfhk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwaGp2ZHRsY3VxbmV3eXlrZmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzczNzksImV4cCI6MjA5NTkxMzM3OX0.tB2xn3EIRy8rW078-0QFpu8bmxyLw95r-MqPoxkYFKY';
-const sb = (window.supabase || window.supabase_js)?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) || null;
+const sb = (window.supabase || window.supabase_js)?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    // "Remember me": keep the session in localStorage so it survives new tabs/
+    // windows and browser restarts; auto-refresh quietly. detectSessionInUrl off
+    // avoids a fresh window trying to parse a session out of the URL. The default
+    // storageKey is kept so existing signed-in users aren't logged out on upgrade.
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+  },
+}) || null;
+
+// Auto sign-out after a week of inactivity (stamped on load + activity).
+const INACTIVITY_MS = 7 * 24 * 60 * 60 * 1000;
+function touchActivity() { try { localStorage.setItem('ptc-last-active', String(Date.now())); } catch (_) {} }
+function inactivityExpired() {
+  try { const t = parseInt(localStorage.getItem('ptc-last-active') || '0', 10);
+    return t > 0 && (Date.now() - t) > INACTIVITY_MS; } catch (_) { return false; }
+}
 
 let currentUser = null;
 let userProfile  = null;
@@ -1337,6 +1382,7 @@ function loadState() {
 function saveLocalState(s) {
   const toSave = { ...s, _userId: currentUser?.id || null };
   localStorage.setItem('hyrox_state', JSON.stringify(toSave));
+  if (currentUser) touchActivity();
 }
 
 function saveState(s) {
@@ -1361,8 +1407,9 @@ async function pushTrainingState(s) {
     row.hybrid_pace_adj     = s.paceAdj    || {};
     row.hybrid_strength_log = s.strengthLog || {};
   } else {
-    row.completions = s.completions || {};
-    row.pace_adj    = s.paceAdj    || {};
+    row.completions        = s.completions || {};
+    row.pace_adj           = s.paceAdj    || {};
+    row.hyrox_strength_log = s.strengthLog || {};
   }
   const { error } = await sb.from('training_state').upsert(row, { onConflict: 'user_id' });
   if (error) console.error('pushTrainingState failed:', error.message);
@@ -1428,17 +1475,22 @@ async function loadStateFromSupabase() {
     const activePaceAdj     = plan === 'running' ? (ts?.running_pace_adj || {})
                             : plan === 'hybrid'  ? (ts?.hybrid_pace_adj  || {})
                             : (ts?.pace_adj || {});
+    const activeStrengthLog = plan === 'hybrid' ? (ts?.hybrid_strength_log || {})
+                            : plan === 'hyrox'  ? (ts?.hyrox_strength_log  || {})
+                            : {};
     return {
       completions:          activeCompletions,
       paceAdj:              activePaceAdj,
-      strengthLog:          ts?.hybrid_strength_log || {},
+      strengthLog:          activeStrengthLog,
       // Stash the other plans' state so switchPlan() can swap without a DB round-trip
       _hyroxCompletions:    ts?.completions          || {},
       _hyroxPaceAdj:        ts?.pace_adj             || {},
+      _hyroxStrengthLog:    ts?.hyrox_strength_log   || {},
       _runningCompletions:  ts?.running_completions  || {},
       _runningPaceAdj:      ts?.running_pace_adj     || {},
       _hybridCompletions:   ts?.hybrid_completions   || {},
       _hybridPaceAdj:       ts?.hybrid_pace_adj      || {},
+      _hybridStrengthLog:   ts?.hybrid_strength_log  || {},
       feedback,
       workoutData,
     };
@@ -1470,6 +1522,7 @@ function subscribeRealtime() {
                     : plan === 'hybrid'  ? (payload.new.hybrid_pace_adj  || {})
                     : (payload.new.pace_adj || {});
       if (plan === 'hybrid') state.strengthLog = payload.new.hybrid_strength_log || {};
+      else if (plan === 'hyrox') state.strengthLog = payload.new.hyrox_strength_log || {};
       saveLocalState(state);
       render();
     })
@@ -1498,10 +1551,15 @@ async function initAuth() {
   if (!sb) { render(); return; }
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user) {
+    if (inactivityExpired()) { await sb.auth.signOut(); render(); return; }
+    touchActivity();
     currentUser = session.user;
     await loadUserData();
     subscribeRealtime();
   }
+  // Refresh the activity stamp whenever the app is brought back to the foreground.
+  window.addEventListener('focus', () => { if (currentUser) touchActivity(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && currentUser) touchActivity(); });
 
   sb.auth.onAuthStateChange(async (_event, session) => {
     currentUser = session?.user || null;
@@ -1511,7 +1569,7 @@ async function initAuth() {
     } else {
       if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
       userProfile = null;
-      state = { completions: {}, feedback: {}, paceAdj: {}, workoutData: {} };
+      state = { completions: {}, feedback: {}, paceAdj: {}, workoutData: {}, strengthLog: {} };
     }
     renderUserHeader();
     render();
@@ -1658,7 +1716,7 @@ async function handleForgotPassword() {
 async function handleSignOut() {
   await sb.auth.signOut();
   document.getElementById('profileMenu').classList.add('hidden');
-  state = { completions: {}, feedback: {}, paceAdj: {}, workoutData: {} };
+  state = { completions: {}, feedback: {}, paceAdj: {}, workoutData: {}, strengthLog: {} };
   render();
 }
 
@@ -2470,28 +2528,33 @@ async function switchPlan(planType) {
 
   const current = userProfile?.active_plan || 'hyrox';
 
-  // Save current plan's live completions/paceAdj back into the stash
+  // Save current plan's live completions/paceAdj (+ strength log) back into the stash
   if (current === 'hyrox') {
     state._hyroxCompletions = { ...state.completions };
     state._hyroxPaceAdj     = { ...state.paceAdj };
+    state._hyroxStrengthLog = { ...state.strengthLog };
   } else if (current === 'running') {
     state._runningCompletions = { ...state.completions };
     state._runningPaceAdj     = { ...state.paceAdj };
   } else {
     state._hybridCompletions = { ...state.completions };
     state._hybridPaceAdj     = { ...state.paceAdj };
+    state._hybridStrengthLog = { ...state.strengthLog };
   }
 
   // Load the target plan's stashed state
   if (planType === 'running') {
     state.completions = { ...(state._runningCompletions || {}) };
     state.paceAdj     = { ...(state._runningPaceAdj     || {}) };
+    state.strengthLog = {};
   } else if (planType === 'hybrid') {
     state.completions = { ...(state._hybridCompletions || {}) };
     state.paceAdj     = { ...(state._hybridPaceAdj     || {}) };
+    state.strengthLog = { ...(state._hybridStrengthLog || {}) };
   } else {
     state.completions = { ...(state._hyroxCompletions || {}) };
     state.paceAdj     = { ...(state._hyroxPaceAdj     || {}) };
+    state.strengthLog = { ...(state._hyroxStrengthLog || {}) };
   }
 
   // Rebuild session map for the new plan
@@ -3241,44 +3304,71 @@ function renderSession() {
     return;
   }
 
-  // Hybrid strength session — per-exercise weight/reps/feel logging with progression
+  // Loggable strength session (Hybrid + Hyrox) — per-SET weight/reps logging,
+  // one feel per exercise, standard double progression.
   if (session.type === 'hybrid_strength') {
     const logged = state.strengthLog[viewDate] || null;
-    const warmupHtml = `
+    const inp = 'padding:6px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg2,#12151f);color:var(--text)';
+    // Fold in injury-specific prep (e.g. knee rehab) when relevant.
+    const sInjType = detectInjury(userProfile?.injuries);
+    const sProto   = (sInjType && session.kneePhase) ? INJURY_PROTOCOLS[sInjType] : null;
+    const warmItems = [...(sProto?.warmup || []), ...(session.warmup || [])];
+    const warmupHtml = warmItems.length ? `
       <div class="block">
         <div class="block-title">Warm-up · 8–10 min</div>
-        ${(session.warmup || []).map(i => `<div class="block-item">${i}</div>`).join('')}
-      </div>`;
+        ${sProto ? `<div class="knee-note">🩹 ${sProto.note}</div>` : ''}
+        ${warmItems.map(i => `<div class="block-item">${i}</div>`).join('')}
+      </div>` : '';
 
     const exRows = (session.exercises || []).map((ex, i) => {
-      const sug = hybridSuggest(ex, viewDate);
+      const sug   = hybridSuggest(ex, viewDate);
       const prior = logged ? logged.find(e => e.name === ex.name) : null;
-      const wVal = prior ? prior.weight : (sug.weight != null ? sug.weight : '');
-      const rVal = prior ? prior.reps : sug.reps;
-      const fVal = prior ? prior.feel : 'moderate';
+      const priorSets = prior && Array.isArray(prior.sets) ? prior.sets
+                      : (prior && prior.weight != null ? [{ weight: prior.weight, reps: prior.reps }] : null);
+      const fVal  = prior ? (prior.feel || 'moderate') : 'moderate';
       const scheme = `${ex.sets} × ${ex.repMin}–${ex.repMax}`;
+
       if (comp === 'done') {
-        const done = prior ? `${prior.weight != null ? prior.weight + ' kg' : '—'} × ${prior.reps} · ${prior.feel}` : 'not logged';
-        return `<div class="block-item"><strong>${ex.name}</strong> <span style="color:var(--muted)">(${scheme})</span><br><span style="color:var(--accent)">${done}</span></div>`;
+        const setsTxt = priorSets && priorSets.length
+          ? priorSets.map(s => `${s.weight != null ? s.weight : '—'}×${s.reps != null ? s.reps : '—'}`).join('  ')
+          : 'not logged';
+        return `<div class="block-item"><strong>${ex.name}</strong> <span style="color:var(--muted)">(${scheme})</span><br><span style="color:var(--accent)">${setsTxt}</span> <span style="color:var(--muted)">· ${prior ? (prior.feel || '') : ''}</span></div>`;
       }
+
+      const setRows = Array.from({ length: ex.sets }, (_, j) => {
+        const ps = priorSets && priorSets[j];
+        const wVal = ps && ps.weight != null ? ps.weight : (sug.weight != null ? sug.weight : '');
+        const rVal = ps && ps.reps   != null ? ps.reps   : '';
+        return `
+          <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
+            <span style="color:var(--muted);font-size:12px;width:38px">Set ${j + 1}</span>
+            <input id="hx-w-${i}-${j}" type="number" inputmode="decimal" step="2.5" value="${wVal}" placeholder="kg" style="width:66px;${inp}"> kg
+            <input id="hx-r-${i}-${j}" type="number" inputmode="numeric" value="${rVal}" placeholder="reps" style="width:56px;${inp}"> reps
+          </div>`;
+      }).join('');
+
       return `
-        <div class="block-item" style="border-bottom:1px solid var(--border,#232838);padding-bottom:10px;margin-bottom:8px">
+        <div class="block-item" style="border-bottom:1px solid var(--border,#232838);padding-bottom:10px;margin-bottom:10px">
           <div style="font-weight:700">${ex.name} <span style="color:var(--muted);font-weight:400">· ${scheme}</span></div>
-          <div style="color:var(--muted);font-size:12px;margin:2px 0 6px">${sug.hint}</div>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <input id="hx-w-${i}" type="number" inputmode="decimal" step="2.5" value="${wVal}" placeholder="kg"
-              style="width:70px;padding:6px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg2,#12151f);color:var(--text)"> kg
-            <input id="hx-r-${i}" type="number" inputmode="numeric" value="${rVal}" placeholder="reps"
-              style="width:60px;padding:6px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg2,#12151f);color:var(--text)"> reps
-            <select id="hx-f-${i}" style="padding:6px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg2,#12151f);color:var(--text)">
-              <option value="easy" ${fVal==='easy'?'selected':''}>Easy</option>
-              <option value="moderate" ${fVal==='moderate'?'selected':''}>Moderate</option>
-              <option value="hard" ${fVal==='hard'?'selected':''}>Hard</option>
+          <div style="color:var(--muted);font-size:12px;margin:2px 0 2px">${sug.hint}</div>
+          ${setRows}
+          <div style="margin-top:6px">
+            <select id="hx-f-${i}" style="${inp}">
+              <option value="easy" ${fVal==='easy'?'selected':''}>Felt easy</option>
+              <option value="moderate" ${fVal==='moderate'?'selected':''}>Felt moderate</option>
+              <option value="hard" ${fVal==='hard'?'selected':''}>Felt hard</option>
               <option value="failed" ${fVal==='failed'?'selected':''}>Failed a set</option>
             </select>
           </div>
         </div>`;
     }).join('');
+
+    // Non-loggable extra work (e.g. Hyrox station circuit) shown as info
+    const extraHtml = (session.extraBlocks || []).map(b => `
+      <div class="block">
+        <div class="block-title">${b.title}</div>
+        ${b.items.map(it => `<div class="block-item">${it}</div>`).join('')}
+      </div>`).join('');
 
     const strengthAction = comp === 'done'
       ? `<div class="action-bar"><button class="btn btn-undo btn-full" onclick="undoComplete()">Undo</button></div>`
@@ -3298,9 +3388,10 @@ function renderSession() {
           ${noteHtml}
           ${warmupHtml}
           <div class="block">
-            <div class="block-title">${comp === 'done' ? 'Logged' : 'Workout · log each lift'}</div>
+            <div class="block-title">${comp === 'done' ? 'Logged' : 'Workout · log each set'}</div>
             ${exRows}
           </div>
+          ${extraHtml}
         </div>
         ${strengthAction}
       </div>`;
@@ -3376,14 +3467,18 @@ function saveHybridStrength() {
   const session = SESSIONS[viewDate];
   if (!session || session.type !== 'hybrid_strength') return;
   const log = (session.exercises || []).map((ex, i) => {
-    const w = document.getElementById(`hx-w-${i}`)?.value;
-    const r = document.getElementById(`hx-r-${i}`)?.value;
-    const f = document.getElementById(`hx-f-${i}`)?.value || 'moderate';
+    const sets = Array.from({ length: ex.sets }, (_, j) => {
+      const w = document.getElementById(`hx-w-${i}-${j}`)?.value;
+      const r = document.getElementById(`hx-r-${i}-${j}`)?.value;
+      return {
+        weight: w === '' || w == null ? null : parseFloat(w),
+        reps:   r === '' || r == null ? null : parseInt(r, 10),
+      };
+    }).filter(s => s.weight != null || s.reps != null);
     return {
-      name:   ex.name,
-      weight: w === '' || w == null ? null : parseFloat(w),
-      reps:   r === '' || r == null ? null : parseInt(r, 10),
-      feel:   f,
+      name: ex.name,
+      sets,
+      feel: document.getElementById(`hx-f-${i}`)?.value || 'moderate',
     };
   });
   state.strengthLog[viewDate] = log;
