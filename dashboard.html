@@ -1564,22 +1564,54 @@ async function initAuth() {
   // Refresh the activity stamp whenever the app is brought back to the foreground.
   window.addEventListener('focus', () => { if (currentUser) touchActivity(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && currentUser) touchActivity(); });
+  // Mobile browsers restore backgrounded tabs from bfcache without re-running any
+  // script — timers (incl. the SDK's own refresh timer) are frozen for the whole
+  // time the tab was away. Nudge a session check on restore so a token that went
+  // stale while backgrounded gets refreshed immediately instead of silently
+  // expiring the next time something needs it.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted && currentUser) { touchActivity(); sb.auth.getSession(); }
+  });
 
-  sb.auth.onAuthStateChange(async (_event, session) => {
-    currentUser = session?.user || null;
-    if (currentUser) {
-      await loadUserData();
-      subscribeRealtime();
-    } else {
-      if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
-      userProfile = null;
-      state = { completions: {}, feedback: {}, paceAdj: {}, workoutData: {}, strengthLog: {} };
-    }
-    renderUserHeader();
-    render();
+  sb.auth.onAuthStateChange((event, session) => {
+    // Never run this body (or call other sb.auth.* methods) synchronously inside
+    // the callback — GoTrueClient can still be holding its internal auth lock
+    // here, and doing so can deadlock the exact background-refresh-on-resume
+    // flow this app depends on. Supabase's documented fix is to defer via
+    // setTimeout(0); see https://github.com/supabase/auth-js/issues/762.
+    setTimeout(() => handleAuthStateChange(event, session), 0);
   });
 
   renderUserHeader();
+}
+
+async function handleAuthStateChange(event, session) {
+  if (!session?.user && currentUser) {
+    // A null session here can be a false alarm, not a real sign-out: on mobile,
+    // switching apps/screens throttles or interrupts the SDK's background token
+    // refresh, and a transient network blip exactly as the app resumes can make
+    // that refresh attempt fail even though the underlying session is still
+    // valid. Re-check once, now that we're back in the foreground with live
+    // network, before wiping local state and dropping the user to the login
+    // screen — this is the "logged out when switching screens" bug.
+    const { data: recheck } = await sb.auth.getSession();
+    if (recheck?.session?.user) {
+      currentUser = recheck.session.user;
+      touchActivity();
+      return;
+    }
+  }
+  currentUser = session?.user || null;
+  if (currentUser) {
+    await loadUserData();
+    subscribeRealtime();
+  } else {
+    if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+    userProfile = null;
+    state = { completions: {}, feedback: {}, paceAdj: {}, workoutData: {}, strengthLog: {} };
+  }
+  renderUserHeader();
+  render();
 }
 
 async function loadUserData() {
@@ -3818,15 +3850,14 @@ function secToPace(s) {
   return `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
 }
 
-function analyzeWorkout(laps, dk) {
-  if (!laps || !laps.length) return null;
+// Pure insight generator — takes final metrics (Garmin-derived OR hand-edited via
+// "Edit data") and produces wins/watch/adjustments from THEM, not from whatever
+// laps happened to originally come in. Must be re-run any time avgPaceSec/avgHR/
+// totalDist/laps change, or the feedback text goes stale relative to the numbers.
+function generateWorkoutInsights({ avgPaceSec, avgHR, laps, totalDist, totalTime }, dk) {
   const session  = SESSIONS[dk];
   const week     = session?.week || getWeekNum(dk);
-  const totalDist = laps.reduce((a, l) => a + l.distM, 0);
-  const totalTime = laps.reduce((a, l) => a + l.totalTimeSec, 0);
-  const avgPaceSec = totalDist > 0 ? (totalTime / totalDist) * 1000 : 0;
-  const hrList = laps.filter(l => l.avgHR > 0).map(l => l.avgHR);
-  const avgHR  = hrList.length ? Math.round(hrList.reduce((a,b) => a+b) / hrList.length) : 0;
+  laps = laps || [];
 
   const wins = [], watch = [], adjustments = [];
 
@@ -3887,6 +3918,19 @@ function analyzeWorkout(laps, dk) {
   if (parseFloat(km) >= 4 && session?.type === 'run') wins.push(`Good volume: ${km} km completed.`);
 
   if (!wins.length && !watch.length) wins.push(`Session complete: ${km} km in ${Math.floor(totalTime/60)} min.`);
+
+  return { wins, watch, adjustments };
+}
+
+function analyzeWorkout(laps, dk) {
+  if (!laps || !laps.length) return null;
+  const totalDist = laps.reduce((a, l) => a + l.distM, 0);
+  const totalTime = laps.reduce((a, l) => a + l.totalTimeSec, 0);
+  const avgPaceSec = totalDist > 0 ? (totalTime / totalDist) * 1000 : 0;
+  const hrList = laps.filter(l => l.avgHR > 0).map(l => l.avgHR);
+  const avgHR  = hrList.length ? Math.round(hrList.reduce((a,b) => a+b) / hrList.length) : 0;
+
+  const { wins, watch, adjustments } = generateWorkoutInsights({ avgPaceSec, avgHR, laps, totalDist, totalTime }, dk);
 
   return { laps, avgPaceSec, avgHR, totalDist, totalTime, wins, watch, adjustments };
 }
@@ -4106,8 +4150,20 @@ function saveWorkoutEdit(dk) {
     return { ...data.laps[i], paceSecPerKm: pSec, avgHR: hr2 };
   });
 
+  // Keep total time consistent with the (possibly hand-corrected) pace + distance,
+  // then regenerate the feedback/adjustments text from the corrected numbers.
+  // wins/watch/adjustments are baked strings computed at sync time, not derived
+  // live at render — without this they silently keep describing the original
+  // (wrong) Garmin reading after an edit.
+  if (data.avgPaceSec > 0 && data.totalDist > 0) data.totalTime = data.avgPaceSec * (data.totalDist / 1000);
+  const insights = generateWorkoutInsights(data, dk);
+  data.wins = insights.wins;
+  data.watch = insights.watch;
+  data.adjustments = insights.adjustments;
+
   saveState(state);
   if (currentUser) pushWorkoutData(dk, data);
+  recomputeAllPaceAdj(); // future planned paces should reflect the corrected reading too
   render();
 }
 
