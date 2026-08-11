@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hyrox Training · July 5</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- Loaded defensively (with retries + a mirror fallback) near the top of the
+     inline script below — a transient CDN failure right as a backgrounded
+     mobile tab wakes up must never be mistaken for "not signed in". -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js"></script>
 <style>
   :root {
     --bg:        #0f1117;
@@ -933,7 +936,8 @@ function hybridRunSession(week) {
     title: useIntervals ? 'Intervals — 6 × 800m' : 'Tempo Run — 6 km',
     subtitle: useIntervals ? '6 × 800m @ 5K effort · 90s jog recovery' : '20 min continuous @ comfortably hard',
     icon: useIntervals ? '⚡' : '🏃', paceRef: useIntervals ? 'intervals' : 'tempo', rest: false,
-    warmup: RUN_WARMUPS[useIntervals ? 'interval' : 'tempo'] || RUN_WARMUPS.tempo, distKm: 6 };
+    warmup: RUN_WARMUPS[useIntervals ? 'interval' : 'tempo'] || RUN_WARMUPS.tempo, distKm: 6,
+    ...(useIntervals ? { intervalReps: 6, intervalDistM: 800, intervalRestSec: 90 } : {}) };
 }
 
 function hybridFunctionalSession(variant, week) {
@@ -1094,6 +1098,7 @@ function hyroxQualityRun(week, reps, isRace) {
     ? { type: 'run', subtype: 'interval', week, paceRef: 'race', distKm: km, icon: '⚡',
         title: `Race-Pace Intervals — ${reps} × 1 km`, subtitle: `${reps} × 1 km @ race pace · 60–75 s jog`,
         warmup: RUN_WARMUPS.interval || RUN_WARMUPS.tempo, rest: false,
+        intervalReps: reps, intervalDistM: 1000, intervalRestSec: 75,
         note: 'Hold your goal race pace on every rep. We build this to 10 × 1 km so race day\'s 8 runs feel submaximal.' }
     : { type: 'run', subtype: 'tempo', week, paceRef: 'tempo', distKm: Math.max(4, reps), icon: '🏃',
         title: `Tempo Run — ${Math.max(4, reps)} km`, subtitle: 'Comfortably hard · threshold', warmup: RUN_WARMUPS.tempo,
@@ -1351,17 +1356,54 @@ buildHyroxPlan({ plan_start: DEFAULT_PLAN_START_STR, race_date: DEFAULT_RACE_DAT
 
 const SUPABASE_URL = 'https://bphjvdtlcuqnewyykfhk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwaGp2ZHRsY3VxbmV3eXlrZmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzczNzksImV4cCI6MjA5NTkxMzM3OX0.tB2xn3EIRy8rW078-0QFpu8bmxyLw95r-MqPoxkYFKY';
-const sb = (window.supabase || window.supabase_js)?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    // "Remember me": keep the session in localStorage so it survives new tabs/
-    // windows and browser restarts; auto-refresh quietly. The default storageKey
-    // is kept so existing signed-in users aren't logged out on upgrade, and
-    // detectSessionInUrl is left at its default (true) so the password-reset
-    // recovery link still establishes a session.
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-}) || null;
+
+// The SDK is loaded via a <script src> tag in <head>, which occasionally fails
+// silently on mobile (e.g. right as an OS-evicted background tab wakes back up
+// mid-reconnect) — window.supabase is then just undefined, with no error event
+// visible to the user. Previously that made `sb` permanently null for the rest
+// of the page's life, so getSession() never ran and a perfectly valid persisted
+// session was ignored, looking exactly like "got signed out". Retry with a
+// mirror CDN before giving up, so a one-off network blip can't do that.
+let sb = null;
+function loadScriptOnce(src) {
+  return new Promise(resolve => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+async function ensureSupabaseSdk() {
+  if (window.supabase || window.supabase_js) return true;
+  const mirrors = [
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js',
+    'https://unpkg.com/@supabase/supabase-js@2.112.3/dist/umd/supabase.js',
+  ];
+  for (const src of mirrors) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await loadScriptOnce(src);
+      if (window.supabase || window.supabase_js) return true;
+      await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+    }
+  }
+  return false;
+}
+async function initSupabaseClient() {
+  const ok = await ensureSupabaseSdk();
+  if (!ok) { console.error('Supabase SDK failed to load after retries — continuing in local-only mode.'); return; }
+  sb = (window.supabase || window.supabase_js).createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      // "Remember me": keep the session in localStorage so it survives new tabs/
+      // windows and browser restarts; auto-refresh quietly. The default storageKey
+      // is kept so existing signed-in users aren't logged out on upgrade, and
+      // detectSessionInUrl is left at its default (true) so the password-reset
+      // recovery link still establishes a session.
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  });
+}
 
 // Auto sign-out after a week of inactivity (stamped on load + activity).
 const INACTIVITY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -1548,7 +1590,7 @@ function subscribeRealtime() {
 }
 
 async function initAuth() {
-  if (!sb) { render(); return; }
+  if (!sb) { renderUserHeader(); render(); return; }
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user && inactivityExpired()) {
     // Signed in but idle > 1 week — sign out, but DON'T return: the auth
@@ -3257,9 +3299,19 @@ function renderSession() {
     const intervalPace= adjustedPace(week, 'intervals');
     const longPace    = adjustedPace(week, 'long');
     const racePace    = adjustedPace(week, 'race');
-    const zoneLabel   = { easy:'Zone 2 · conversational', tempo:'Zone 4 · comfortably hard', interval:'Zone 4–5 · race effort', long:'Zone 2 · aerobic base', race:'Race effort · trust your training', shakeout:'Zone 1–2 · very easy' };
+    const zoneLabel   = { easy:'Zone 2 · conversational', tempo:'Zone 4 · comfortably hard', intervals:'Zone 4–5 · race effort', long:'Zone 2 · aerobic base', race:'Race effort · trust your training', shakeout:'Zone 1–2 · very easy' };
     const zone        = zoneLabel[paceRef] || '';
     const distKm      = session.distKm;
+    // Interval sessions are reps + recovery, not one continuous distance —
+    // showing a flat "N km @ pace" here read like a steady-state target that
+    // contradicted the "N × Mm" title/subtitle above it. Show the actual
+    // structure instead, consistent with whatever the session really is.
+    const targetHtml  = session.intervalReps
+      ? `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${session.intervalReps} × ${session.intervalDistM >= 1000 ? (session.intervalDistM / 1000) + ' km' : session.intervalDistM + ' m'} @ ${targetPace} /km</div>
+         <div class="block-item" style="color:var(--muted)">${session.intervalRestSec}s jog recovery between reps</div>`
+      : distKm
+      ? `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${distKm} km · ${targetPace} /km</div>`
+      : `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${targetPace} /km</div>`;
 
     const nudge = getVolumeNudge(week);
     const nudgeHtml = nudge === 'strong'
@@ -3296,7 +3348,7 @@ function renderSession() {
           ${noteHtml}
           <div class="block">
             <div class="block-title">Target</div>
-            ${distKm ? `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${distKm} km · ${targetPace} /km</div>` : `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${targetPace} /km</div>`}
+            ${targetHtml}
             <div class="block-item" style="color:var(--muted)">${zone}</div>
           </div>
           ${warmupHtml}
@@ -3336,7 +3388,7 @@ function renderSession() {
         const setsTxt = priorSets && priorSets.length
           ? priorSets.map(s => `${s.weight != null ? s.weight : '—'}×${s.reps != null ? s.reps : '—'}`).join('  ')
           : 'not logged';
-        return `<div class="block-item"><strong>${ex.name}</strong> <span style="color:var(--muted)">(${scheme})</span><br><span style="color:var(--accent)">${setsTxt}</span> <span style="color:var(--muted)">· ${prior ? (prior.feel || '') : ''}</span></div>`;
+        return `<div style="padding:5px 0;font-size:14px;line-height:1.45"><strong>${ex.name}</strong> <span style="color:var(--muted)">(${scheme})</span><br><span style="color:var(--accent)">${setsTxt}</span> <span style="color:var(--muted)">· ${prior ? (prior.feel || '') : ''}</span></div>`;
       }
 
       const setRows = Array.from({ length: ex.sets }, (_, j) => {
@@ -3352,7 +3404,7 @@ function renderSession() {
       }).join('');
 
       return `
-        <div class="block-item" style="border-bottom:1px solid var(--border,#232838);padding-bottom:10px;margin-bottom:10px">
+        <div style="font-size:14px;line-height:1.45;border-bottom:1px solid var(--border,#232838);padding:5px 0 10px;margin-bottom:10px">
           <div style="font-weight:700">${ex.name} <span style="color:var(--muted);font-weight:400">· ${scheme}</span></div>
           <div style="color:var(--muted);font-size:12px;margin:2px 0 2px">${sug.hint}</div>
           ${setRows}
@@ -4373,8 +4425,9 @@ document.getElementById('feedbackModal').addEventListener('click', function(e) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-// Initialise auth then render (auth state listener calls render on change)
-initAuth().then(() => render());
+// Load the Supabase SDK (with retries), then initialise auth, then render
+// (auth state listener calls render on change after that).
+initSupabaseClient().then(() => initAuth()).then(() => render());
 
 // ── Google Calendar / ICS export ──────────────────────────────────────────────
 
