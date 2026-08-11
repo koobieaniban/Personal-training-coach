@@ -936,7 +936,8 @@ function hybridRunSession(week) {
     title: useIntervals ? 'Intervals — 6 × 800m' : 'Tempo Run — 6 km',
     subtitle: useIntervals ? '6 × 800m @ 5K effort · 90s jog recovery' : '20 min continuous @ comfortably hard',
     icon: useIntervals ? '⚡' : '🏃', paceRef: useIntervals ? 'intervals' : 'tempo', rest: false,
-    warmup: RUN_WARMUPS[useIntervals ? 'interval' : 'tempo'] || RUN_WARMUPS.tempo, distKm: 6 };
+    warmup: RUN_WARMUPS[useIntervals ? 'interval' : 'tempo'] || RUN_WARMUPS.tempo, distKm: 6,
+    ...(useIntervals ? { intervalReps: 6, intervalDistM: 800, intervalRestSec: 90 } : {}) };
 }
 
 function hybridFunctionalSession(variant, week) {
@@ -1097,6 +1098,7 @@ function hyroxQualityRun(week, reps, isRace) {
     ? { type: 'run', subtype: 'interval', week, paceRef: 'race', distKm: km, icon: '⚡',
         title: `Race-Pace Intervals — ${reps} × 1 km`, subtitle: `${reps} × 1 km @ race pace · 60–75 s jog`,
         warmup: RUN_WARMUPS.interval || RUN_WARMUPS.tempo, rest: false,
+        intervalReps: reps, intervalDistM: 1000, intervalRestSec: 75,
         note: 'Hold your goal race pace on every rep. We build this to 10 × 1 km so race day\'s 8 runs feel submaximal.' }
     : { type: 'run', subtype: 'tempo', week, paceRef: 'tempo', distKm: Math.max(4, reps), icon: '🏃',
         title: `Tempo Run — ${Math.max(4, reps)} km`, subtitle: 'Comfortably hard · threshold', warmup: RUN_WARMUPS.tempo,
@@ -3297,9 +3299,19 @@ function renderSession() {
     const intervalPace= adjustedPace(week, 'intervals');
     const longPace    = adjustedPace(week, 'long');
     const racePace    = adjustedPace(week, 'race');
-    const zoneLabel   = { easy:'Zone 2 · conversational', tempo:'Zone 4 · comfortably hard', interval:'Zone 4–5 · race effort', long:'Zone 2 · aerobic base', race:'Race effort · trust your training', shakeout:'Zone 1–2 · very easy' };
+    const zoneLabel   = { easy:'Zone 2 · conversational', tempo:'Zone 4 · comfortably hard', intervals:'Zone 4–5 · race effort', long:'Zone 2 · aerobic base', race:'Race effort · trust your training', shakeout:'Zone 1–2 · very easy' };
     const zone        = zoneLabel[paceRef] || '';
     const distKm      = session.distKm;
+    // Interval sessions are reps + recovery, not one continuous distance —
+    // showing a flat "N km @ pace" here read like a steady-state target that
+    // contradicted the "N × Mm" title/subtitle above it. Show the actual
+    // structure instead, consistent with whatever the session really is.
+    const targetHtml  = session.intervalReps
+      ? `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${session.intervalReps} × ${session.intervalDistM >= 1000 ? (session.intervalDistM / 1000) + ' km' : session.intervalDistM + ' m'} @ ${targetPace} /km</div>
+         <div class="block-item" style="color:var(--muted)">${session.intervalRestSec}s jog recovery between reps</div>`
+      : distKm
+      ? `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${distKm} km · ${targetPace} /km</div>`
+      : `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${targetPace} /km</div>`;
 
     const nudge = getVolumeNudge(week);
     const nudgeHtml = nudge === 'strong'
@@ -3336,7 +3348,7 @@ function renderSession() {
           ${noteHtml}
           <div class="block">
             <div class="block-title">Target</div>
-            ${distKm ? `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${distKm} km · ${targetPace} /km</div>` : `<div class="block-item" style="font-size:18px;font-weight:800;color:var(--accent)">${targetPace} /km</div>`}
+            ${targetHtml}
             <div class="block-item" style="color:var(--muted)">${zone}</div>
           </div>
           ${warmupHtml}
@@ -3376,7 +3388,7 @@ function renderSession() {
         const setsTxt = priorSets && priorSets.length
           ? priorSets.map(s => `${s.weight != null ? s.weight : '—'}×${s.reps != null ? s.reps : '—'}`).join('  ')
           : 'not logged';
-        return `<div class="block-item"><strong>${ex.name}</strong> <span style="color:var(--muted)">(${scheme})</span><br><span style="color:var(--accent)">${setsTxt}</span> <span style="color:var(--muted)">· ${prior ? (prior.feel || '') : ''}</span></div>`;
+        return `<div style="padding:5px 0;font-size:14px;line-height:1.45"><strong>${ex.name}</strong> <span style="color:var(--muted)">(${scheme})</span><br><span style="color:var(--accent)">${setsTxt}</span> <span style="color:var(--muted)">· ${prior ? (prior.feel || '') : ''}</span></div>`;
       }
 
       const setRows = Array.from({ length: ex.sets }, (_, j) => {
@@ -3392,7 +3404,7 @@ function renderSession() {
       }).join('');
 
       return `
-        <div class="block-item" style="border-bottom:1px solid var(--border,#232838);padding-bottom:10px;margin-bottom:10px">
+        <div style="font-size:14px;line-height:1.45;border-bottom:1px solid var(--border,#232838);padding:5px 0 10px;margin-bottom:10px">
           <div style="font-weight:700">${ex.name} <span style="color:var(--muted);font-weight:400">· ${scheme}</span></div>
           <div style="color:var(--muted);font-size:12px;margin:2px 0 2px">${sug.hint}</div>
           ${setRows}
