@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Hyrox Training · July 5</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- Loaded defensively (with retries + a mirror fallback) near the top of the
+     inline script below — a transient CDN failure right as a backgrounded
+     mobile tab wakes up must never be mistaken for "not signed in". -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js"></script>
 <style>
   :root {
     --bg:        #0f1117;
@@ -1351,17 +1354,54 @@ buildHyroxPlan({ plan_start: DEFAULT_PLAN_START_STR, race_date: DEFAULT_RACE_DAT
 
 const SUPABASE_URL = 'https://bphjvdtlcuqnewyykfhk.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwaGp2ZHRsY3VxbmV3eXlrZmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzczNzksImV4cCI6MjA5NTkxMzM3OX0.tB2xn3EIRy8rW078-0QFpu8bmxyLw95r-MqPoxkYFKY';
-const sb = (window.supabase || window.supabase_js)?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    // "Remember me": keep the session in localStorage so it survives new tabs/
-    // windows and browser restarts; auto-refresh quietly. The default storageKey
-    // is kept so existing signed-in users aren't logged out on upgrade, and
-    // detectSessionInUrl is left at its default (true) so the password-reset
-    // recovery link still establishes a session.
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-}) || null;
+
+// The SDK is loaded via a <script src> tag in <head>, which occasionally fails
+// silently on mobile (e.g. right as an OS-evicted background tab wakes back up
+// mid-reconnect) — window.supabase is then just undefined, with no error event
+// visible to the user. Previously that made `sb` permanently null for the rest
+// of the page's life, so getSession() never ran and a perfectly valid persisted
+// session was ignored, looking exactly like "got signed out". Retry with a
+// mirror CDN before giving up, so a one-off network blip can't do that.
+let sb = null;
+function loadScriptOnce(src) {
+  return new Promise(resolve => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+async function ensureSupabaseSdk() {
+  if (window.supabase || window.supabase_js) return true;
+  const mirrors = [
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js',
+    'https://unpkg.com/@supabase/supabase-js@2.112.3/dist/umd/supabase.js',
+  ];
+  for (const src of mirrors) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await loadScriptOnce(src);
+      if (window.supabase || window.supabase_js) return true;
+      await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+    }
+  }
+  return false;
+}
+async function initSupabaseClient() {
+  const ok = await ensureSupabaseSdk();
+  if (!ok) { console.error('Supabase SDK failed to load after retries — continuing in local-only mode.'); return; }
+  sb = (window.supabase || window.supabase_js).createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      // "Remember me": keep the session in localStorage so it survives new tabs/
+      // windows and browser restarts; auto-refresh quietly. The default storageKey
+      // is kept so existing signed-in users aren't logged out on upgrade, and
+      // detectSessionInUrl is left at its default (true) so the password-reset
+      // recovery link still establishes a session.
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  });
+}
 
 // Auto sign-out after a week of inactivity (stamped on load + activity).
 const INACTIVITY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -1548,7 +1588,7 @@ function subscribeRealtime() {
 }
 
 async function initAuth() {
-  if (!sb) { render(); return; }
+  if (!sb) { renderUserHeader(); render(); return; }
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user && inactivityExpired()) {
     // Signed in but idle > 1 week — sign out, but DON'T return: the auth
@@ -4373,8 +4413,9 @@ document.getElementById('feedbackModal').addEventListener('click', function(e) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-// Initialise auth then render (auth state listener calls render on change)
-initAuth().then(() => render());
+// Load the Supabase SDK (with retries), then initialise auth, then render
+// (auth state listener calls render on change after that).
+initSupabaseClient().then(() => initAuth()).then(() => render());
 
 // ── Google Calendar / ICS export ──────────────────────────────────────────────
 
